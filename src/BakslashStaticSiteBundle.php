@@ -6,7 +6,9 @@ namespace Bakslash\StaticSiteBundle;
 
 use Bakslash\StaticSiteBundle\DependencyInjection\Compiler\MinifierPass;
 use Bakslash\StaticSiteBundle\Dumper\HeadersFileDumper;
-use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
+use Bakslash\StaticSiteBundle\Dumper\StagingFilesystem;
+use Bakslash\StaticSiteBundle\Event\GenerationPreparedEvent;
+use Bakslash\StaticSiteBundle\Event\GenerationStartedEvent;
 use Bakslash\StaticSiteBundle\ParamsProvider\ParamsProviderInterface;
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
@@ -77,6 +79,9 @@ final class BakslashStaticSiteBundle extends AbstractBundle
 
         $this->configureStorage($config['storage'], $builder);
 
+        $builder->register('.bakslash_static_site.staging', StagingFilesystem::class)
+            ->addArgument(new Reference('bakslash_static_site.filesystem'));
+
         if (null !== $config['headers_file']) {
             $this->configureHeadersFile($config['headers_file'], $builder);
         }
@@ -84,18 +89,20 @@ final class BakslashStaticSiteBundle extends AbstractBundle
 
     private function configureHeadersFile(string $file, ContainerBuilder $builder): void
     {
-        // Decorating the dumper records each page as it is written, after every listener. The
-        // file is written before the other finish listeners, which may deploy the output.
+        // Decorating the dumper records each page as it is written, after every listener.
+        // Prepare the headers alongside the pages, before publishing the export.
         $builder->register('.bakslash_static_site.dumper.headers_file', HeadersFileDumper::class)
             ->setDecoratedService('bakslash_static_site.dumper')
             ->setArguments([
                 new Reference('.inner'),
-                new Reference('bakslash_static_site.filesystem'),
+                new Reference('.bakslash_static_site.staging'),
                 $file,
                 '%bakslash_static_site.clean_urls%',
                 new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE),
+                new Reference('bakslash_static_site.filesystem'),
             ])
-            ->addTag('kernel.event_listener', ['event' => GenerationFinishedEvent::class, 'method' => 'onGenerationFinished', 'priority' => 256]);
+            ->addTag('kernel.event_listener', ['event' => GenerationStartedEvent::class, 'method' => 'onGenerationStarted'])
+            ->addTag('kernel.event_listener', ['event' => GenerationPreparedEvent::class, 'method' => 'onGenerationPrepared']);
     }
 
     private function configureStorage(string $storage, ContainerBuilder $builder): void

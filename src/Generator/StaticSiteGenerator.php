@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Bakslash\StaticSiteBundle\Generator;
 
 use Bakslash\StaticSiteBundle\Dumper\DumperInterface;
+use Bakslash\StaticSiteBundle\Dumper\StagingFilesystem;
 use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
+use Bakslash\StaticSiteBundle\Event\GenerationPreparedEvent;
+use Bakslash\StaticSiteBundle\Event\GenerationStartedEvent;
 use Bakslash\StaticSiteBundle\Event\PageDumpedEvent;
 use Bakslash\StaticSiteBundle\Event\PageFailedEvent;
 use Bakslash\StaticSiteBundle\Event\PageRenderedEvent;
@@ -29,6 +32,7 @@ final readonly class StaticSiteGenerator
         private DumperInterface $dumper,
         private EventDispatcherInterface $eventDispatcher,
         private ResetInterface $servicesResetter,
+        private ?StagingFilesystem $staging = null,
     ) {
     }
 
@@ -37,49 +41,69 @@ final readonly class StaticSiteGenerator
      */
     public function generate(GenerationFilter $filter = new GenerationFilter()): iterable
     {
-        $seen = [];
-        $dumped = [];
+        $failure = null;
 
-        // Resolved before the first page: rendering and the reset between pages both rewrite the
-        // router context the URIs are generated against.
-        $items = iterator_to_array($this->uriProvider->provide($filter), false);
+        try {
+            $this->eventDispatcher->dispatch(new GenerationStartedEvent());
+            $seen = [];
+            $dumped = [];
+            $successful = true;
 
-        foreach ($items as $item) {
-            if ($item instanceof UriGenerationFailure) {
-                $this->eventDispatcher->dispatch(new PageFailedEvent($item->identifier, $item->error));
+            // Resolved before the first page: rendering and the reset between pages both rewrite the
+            // router context the URIs are generated against.
+            $items = iterator_to_array($this->uriProvider->provide($filter), false);
 
-                yield GenerationResult::failure($item->identifier, $item->error);
+            foreach ($items as $item) {
+                if ($item instanceof UriGenerationFailure) {
+                    $successful = false;
+                    $this->eventDispatcher->dispatch(new PageFailedEvent($item->identifier, $item->error));
 
-                continue;
+                    yield GenerationResult::failure($item->identifier, $item->error);
+
+                    continue;
+                }
+
+                // The same URI can be produced twice (duplicate parameter sets, or a static and a
+                // generated route colliding); generate it only once, first occurrence wins.
+                if (isset($seen[$item])) {
+                    continue;
+                }
+                $seen[$item] = true;
+
+                try {
+                    $event = new PageRenderedEvent($item, $this->renderer->render($item));
+                    $this->eventDispatcher->dispatch($event);
+
+                    $this->dumper->dump($item, $event->getPage());
+                    $this->eventDispatcher->dispatch(new PageDumpedEvent($item));
+                    $dumped[] = $item;
+
+                    $result = GenerationResult::success($item);
+                } catch (RenderingException|DumpingException $exception) {
+                    $successful = false;
+                    $this->eventDispatcher->dispatch(new PageFailedEvent($item, $exception));
+
+                    $result = GenerationResult::failure($item, $exception);
+                } finally {
+                    $this->servicesResetter->reset();
+                }
+
+                yield $result;
             }
 
-            // The same URI can be produced twice (duplicate parameter sets, or a static and a
-            // generated route colliding); generate it only once, first occurrence wins.
-            if (isset($seen[$item])) {
-                continue;
-            }
-            $seen[$item] = true;
+            $this->eventDispatcher->dispatch(new GenerationPreparedEvent(!$filter->isEmpty(), $successful));
 
-            try {
-                $event = new PageRenderedEvent($item, $this->renderer->render($item));
-                $this->eventDispatcher->dispatch($event);
-
-                $this->dumper->dump($item, $event->getPage());
-                $this->eventDispatcher->dispatch(new PageDumpedEvent($item));
-                $dumped[] = $item;
-
-                $result = GenerationResult::success($item);
-            } catch (RenderingException|DumpingException $exception) {
-                $this->eventDispatcher->dispatch(new PageFailedEvent($item, $exception));
-
-                $result = GenerationResult::failure($item, $exception);
-            } finally {
-                $this->servicesResetter->reset();
+            if ($successful) {
+                $this->staging?->publish();
             }
 
-            yield $result;
+            $this->eventDispatcher->dispatch(new GenerationFinishedEvent(null !== $this->staging && !$successful ? [] : $dumped, !$filter->isEmpty()));
+        } catch (\Throwable $exception) {
+            $failure = $exception;
+
+            throw $exception;
+        } finally {
+            $this->staging?->discard($failure);
         }
-
-        $this->eventDispatcher->dispatch(new GenerationFinishedEvent($dumped, !$filter->isEmpty()));
     }
 }

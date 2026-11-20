@@ -120,10 +120,29 @@ bin/console static-site:generate --env=prod --route='blog_*' --path='/blog/*'
 bin/console static-site:list
 ```
 
-The command **only writes pages, and never deletes anything.** When you remove or rename a
-route, its previously generated file stays behind, and generation is not atomic. Publish the
-output rather than pointing a web server at `storage` during a build, and let the deploy step
-prune:
+Pages and the bundle's headers file are first written to a unique local temporary directory.
+If URI generation, rendering, writing a staged page, or preparing the headers fails, the staged
+files are discarded and the bundle does not publish them to the configured `storage`. Temporary
+files are removed as execution unwinds, including after an exception or stopped iteration. A
+forcibly terminated process can leave its temporary directory behind. Cleanup errors are
+reported without losing the original failure. The temporary filesystem needs enough free
+space for the generated files.
+
+Once preparation succeeds, files are streamed to `storage` through Flysystem. This works with
+local directories and operator services such as S3, without reading, listing or checksumming
+each destination object first. Every generated file is uploaded, even when its content has not
+changed. The configured adapter's write options and visibility still apply.
+
+The final transfer is **not atomic**, even for a local destination: Flysystem does not offer a
+portable directory swap or multi-file transaction. A transfer failure can leave a mix of old
+and new files; the command fails and reports that publication may be partial. Concurrent runs
+targeting the same storage are not coordinated. Do not use the storage as a live deployment
+while publishing if readers need a consistent snapshot.
+
+The command **only writes generated files, and never deletes anything.** Filtered runs leave
+files outside the selection untouched, including an existing headers file. Removed or renamed
+routes leave their old files behind. Publish the output in a separate deployment step and let
+that step prune:
 
 ```bash
 rsync -a --delete build/ user@host:/var/www/site/
@@ -327,9 +346,18 @@ Hook into a run with a normal listener or subscriber:
 | Event | When | Typical use |
 | --- | --- | --- |
 | `Event\PageRenderedEvent` | after a page renders, before it is written | transform the page with `$event->setPage(...)` |
-| `Event\PageDumpedEvent` | after a page is written | collect the generated URIs, e.g. a build manifest |
+| `Event\PageDumpedEvent` | after a page is written to the temporary export, before publication | collect the generated URIs, e.g. a build manifest |
 | `Event\PageFailedEvent` | a page could not be generated | log or notify; covers URI, render and write failures |
 | `Event\GenerationFinishedEvent` | once every page has been processed, even when some failed; not on an aborted run | write a sitemap from `$event->uris`, which leaves out failed pages; `$event->partial` tells a run filtered with `--route`/`--path` |
+
+`GenerationFinishedEvent` keeps its existing role: on a successful run it is dispatched after
+the prepared files have reached `storage`, so existing sitemap and deployment listeners can
+keep using `bakslash_static_site.filesystem`, which remains the configured destination. It is
+still dispatched when some pages failed, with an empty URI list because none of the staged
+pages have been published. Listeners must not treat this event alone as proof of success.
+Files written by application listeners, or by a custom dumper that bypasses the bundle's
+staging filesystem, are outside the protected preparation step. A listener can therefore still
+change storage or fail after publication.
 
 ```php
 use Bakslash\StaticSiteBundle\Event\PageRenderedEvent;

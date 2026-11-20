@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Prepare generated pages and the headers file in a local temporary directory before streaming
+  them to the configured Flysystem storage. Failed preparation discards the staged files;
+  filtered runs preserve files outside their selection. Final publication remains a non-atomic
+  sequence of writes and can partially update storage if a transfer fails.
+- Keep `GenerationFinishedEvent` after publication on successful runs, and keep the configured
+  destination available as `bakslash_static_site.filesystem`. Application listeners and custom
+  dumpers that write directly to the destination remain outside staged preparation.
+
 ## 0.2.0
 
 - Dispatch `GenerationFinishedEvent` once a run completes, carrying the URIs of the written

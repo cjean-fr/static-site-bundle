@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bakslash\StaticSiteBundle\Dumper;
 
 use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
+use Bakslash\StaticSiteBundle\Event\GenerationPreparedEvent;
 use Bakslash\StaticSiteBundle\Exception\DumpingException;
 use Bakslash\StaticSiteBundle\Renderer\RenderedPage;
 use League\Flysystem\FilesystemException;
@@ -51,6 +52,7 @@ final class HeadersFileDumper implements DumperInterface
         private readonly string $file,
         private readonly bool $cleanUrls = false,
         private readonly ?LoggerInterface $logger = null,
+        private readonly ?FilesystemOperator $previousExport = null,
     ) {
     }
 
@@ -59,6 +61,22 @@ final class HeadersFileDumper implements DumperInterface
         $this->inner->dump($uri, $page);
 
         $this->pages[PagePath::served(PagePath::written($uri, $page->format, $this->cleanUrls))] = self::writtenHeaders($page->headers);
+    }
+
+    public function onGenerationStarted(): void
+    {
+        $this->pages = [];
+    }
+
+    public function onGenerationPrepared(GenerationPreparedEvent $event): void
+    {
+        if (!$event->successful) {
+            $this->pages = [];
+
+            return;
+        }
+
+        $this->onGenerationFinished(new GenerationFinishedEvent([], $event->partial));
     }
 
     public function onGenerationFinished(GenerationFinishedEvent $event): void
@@ -71,7 +89,8 @@ final class HeadersFileDumper implements DumperInterface
         }
 
         try {
-            [$before, $after] = $this->handWritten($this->filesystem->fileExists($this->file) ? $this->filesystem->read($this->file) : '');
+            $existing = $this->previousExport ?? $this->filesystem;
+            [$before, $after] = $this->handWritten($existing->fileExists($this->file) ? $existing->read($this->file) : '');
 
             $block = [self::BEGIN];
             foreach (self::rules($pages) as $path => $headers) {
