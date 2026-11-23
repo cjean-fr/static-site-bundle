@@ -15,6 +15,8 @@
   directory with the new `staging_directory` option, and only log a cleanup failure once the
   publication has succeeded instead of failing the command. Report a discarded run as
   "prepared, none published" in the `static-site:generate` output.
+- `PreparerInterface` is public: tag a service with `bakslash_static_site.preparer` to
+  prepare additional export files (sitemap, ...) with the pages, before publication.
 - Add the `staging_failure: publish` policy: with staging, a run with failed pages can
   still publish the pages that succeeded, instead of discarding the whole run.
 - Write a `_static-site.json` manifest (files of the run, SHA-256 hashes, generation time)

@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Bakslash\StaticSiteBundle\Dumper;
 
 /**
- * Prepares the export's additional files (the headers file) alongside the pages, under the
- * generator's control.
- *
- * @internal
+ * Prepares the export's additional files (the headers file, a sitemap, ...) alongside the
+ * pages, under the generator's control. Tag an implementation with
+ * "bakslash_static_site.preparer"; with "staging", throwing from prepare() aborts the run
+ * before anything is published.
  */
 interface PreparerInterface
 {

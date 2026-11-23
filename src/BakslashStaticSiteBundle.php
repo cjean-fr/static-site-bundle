@@ -89,6 +89,9 @@ final class BakslashStaticSiteBundle extends AbstractBundle
         $builder->registerForAutoconfiguration(ParamsProviderInterface::class)
             ->addTag(ParamsProviderInterface::TAG);
 
+        $builder->registerForAutoconfiguration(PreparerInterface::class)
+            ->addTag('bakslash_static_site.preparer');
+
         $container->import('../config/services.php');
 
         $this->configureStorage($config['storage'], $builder);
@@ -125,8 +128,8 @@ final class BakslashStaticSiteBundle extends AbstractBundle
             ]);
 
         if ($staging) {
-            // The generator calls the preparer directly, before publishing the export.
-            $builder->setAlias(PreparerInterface::class, '.bakslash_static_site.dumper.headers_file');
+            // The generator calls the preparers directly, before publishing the export.
+            $definition->addTag('bakslash_static_site.preparer');
         } else {
             $definition->addTag('kernel.event_listener', ['event' => GenerationFinishedEvent::class, 'method' => 'onGenerationFinished']);
         }

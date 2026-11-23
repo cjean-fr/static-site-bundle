@@ -384,7 +384,11 @@ Allow inline scripts and styles by their hash (`'sha256-…'`) instead.
 
 ## Events
 
-Hook into a run with a normal listener or subscriber:
+Hook into a run with a normal listener or subscriber. To add files of your own to the export
+(a sitemap, a manifest, ...), implement `Dumper\PreparerInterface` instead and tag the service
+with `bakslash_static_site.preparer`: with `staging`, the generator calls it after the pages,
+before publication, so the files are prepared in the staging area and published with them, and
+throwing aborts the run before anything reaches the storage.
 
 | Event | When | Typical use |
 | --- | --- | --- |

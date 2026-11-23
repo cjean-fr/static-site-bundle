@@ -26,6 +26,9 @@ use Symfony\Contracts\Service\ResetInterface;
  */
 final readonly class StaticSiteGenerator
 {
+    /**
+     * @param iterable<PreparerInterface> $preparers
+     */
     public function __construct(
         private UriProviderInterface $uriProvider,
         private RendererInterface $renderer,
@@ -33,7 +36,7 @@ final readonly class StaticSiteGenerator
         private EventDispatcherInterface $eventDispatcher,
         private ResetInterface $servicesResetter,
         private ?StagingFilesystem $staging = null,
-        private ?PreparerInterface $preparer = null,
+        private iterable $preparers = [],
         private bool $publishesFailures = false,
     ) {
     }
@@ -46,7 +49,9 @@ final readonly class StaticSiteGenerator
         $failure = null;
 
         try {
-            $this->preparer?->start();
+            foreach ($this->preparers as $preparer) {
+                $preparer->start();
+            }
             $seen = [];
             $dumped = [];
             $successful = true;
@@ -95,7 +100,9 @@ final readonly class StaticSiteGenerator
 
             $publishable = $successful || $this->publishesFailures;
 
-            $this->preparer?->prepare(partial: !$filter->isEmpty(), successful: $publishable);
+            foreach ($this->preparers as $preparer) {
+                $preparer->prepare(partial: !$filter->isEmpty(), successful: $publishable);
+            }
 
             if ($publishable && !$dryRun) {
                 // A run that failed or was filtered cannot describe the whole site: no manifest.

@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Bakslash\StaticSiteBundle\Command\GenerateStaticSiteCommand;
 use Bakslash\StaticSiteBundle\Command\ListStaticSiteCommand;
 use Bakslash\StaticSiteBundle\Dumper\FlysystemDumper;
-use Bakslash\StaticSiteBundle\Dumper\PreparerInterface;
 use Bakslash\StaticSiteBundle\Generator\StaticSiteGenerator;
 use Bakslash\StaticSiteBundle\ParamsProvider\ParamsProviderInterface;
 use Bakslash\StaticSiteBundle\Renderer\PageRenderer;
@@ -16,6 +15,7 @@ use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigura
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\param;
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
+use function Symfony\Component\DependencyInjection\Loader\Configurator\tagged_iterator;
 use function Symfony\Component\DependencyInjection\Loader\Configurator\tagged_locator;
 
 return static function (ContainerConfigurator $container): void {
@@ -61,7 +61,7 @@ return static function (ContainerConfigurator $container): void {
             service('event_dispatcher'),
             service('services_resetter'),
             service('.bakslash_static_site.staging')->nullOnInvalid(),
-            service(PreparerInterface::class)->nullOnInvalid(),
+            tagged_iterator('bakslash_static_site.preparer'),
             param('bakslash_static_site.staging_publishes_failures'),
         ]);
 

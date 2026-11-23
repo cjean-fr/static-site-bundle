@@ -249,7 +249,7 @@ final class StagingFilesystemTest extends TestCase
                 default => new RenderedPage('new', 'html'),
             };
         });
-        $generator = new StaticSiteGenerator($provider, $renderer, $dumper, $this->dispatcher, $this->createStub(ResetInterface::class), $this->staging, $dumper);
+        $generator = new StaticSiteGenerator($provider, $renderer, $dumper, $this->dispatcher, $this->createStub(ResetInterface::class), $this->staging, [$dumper]);
 
         try {
             iterator_to_array($generator->generate());
@@ -425,6 +425,6 @@ final class StagingFilesystemTest extends TestCase
             return new RenderedPage('new', 'html');
         });
 
-        return new StaticSiteGenerator($provider, $renderer, new FlysystemDumper($this->staging), $this->dispatcher, $this->createStub(ResetInterface::class), $this->staging, $preparer);
+        return new StaticSiteGenerator($provider, $renderer, new FlysystemDumper($this->staging), $this->dispatcher, $this->createStub(ResetInterface::class), $this->staging, null === $preparer ? [] : [$preparer]);
     }
 }
