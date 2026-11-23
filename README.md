@@ -148,6 +148,9 @@ bakslash_static_site:
     staging_directory: '%kernel.project_dir%/var'
 ```
 
+Pass `--dry-run` to prepare the whole export and discard it without touching `storage`,
+useful to validate a run before publishing it.
+
 Once preparation succeeds, files are streamed to `storage` through Flysystem. This works with
 local directories and operator services such as S3, without reading, listing or checksumming
 each destination object first. Every generated file is uploaded, even when its content has not

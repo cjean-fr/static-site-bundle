@@ -16,7 +16,8 @@ enum GenerationStatus
     case Published;
 
     /**
-     * A staged run failed: its prepared pages were discarded and never reached the storage.
+     * The prepared pages did not reach the storage: the staged run failed, or publication was
+     * skipped (dry run).
      */
     case Discarded;
 }

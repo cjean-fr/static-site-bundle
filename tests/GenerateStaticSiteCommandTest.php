@@ -194,6 +194,44 @@ final class GenerateStaticSiteCommandTest extends TestCase
         }
     }
 
+    public function testDryRunPreparesWithoutPublishing(): void
+    {
+        $renderer = $this->createStub(RendererInterface::class);
+        $renderer->method('render')->willReturn(new RenderedPage('content', 'html'));
+
+        $destination = new Filesystem(new LocalFilesystemAdapter(sys_get_temp_dir().'/bakslash-command-test-'.bin2hex(random_bytes(8))));
+        $staging = new StagingFilesystem($destination);
+
+        try {
+            $generator = new StaticSiteGenerator($this->uriProvider(['/a', '/b']), $renderer, new FlysystemDumper($staging), new EventDispatcher(), $this->createStub(ResetInterface::class), $staging);
+
+            $output = new BufferedOutput();
+            $exit = (new GenerateStaticSiteCommand($generator, debug: false, staging: $staging))->__invoke(new SymfonyStyle(new ArrayInput([]), $output), dryRun: true);
+
+            $this->assertSame(0, $exit);
+            $this->assertStringContainsString('Prepared 2 page(s); dry run, nothing was published.', (string) preg_replace('/\s+/', ' ', $output->fetch()));
+            $this->assertFalse($destination->fileExists('a.html'));
+            $this->assertSame([], $staging->listContents('', true)->toArray());
+        } finally {
+            $staging->discard();
+            $destination->deleteDirectory('');
+        }
+    }
+
+    public function testDryRunRequiresStaging(): void
+    {
+        $dumper = $this->createMock(DumperInterface::class);
+        $dumper->expects($this->never())->method('dump');
+
+        $generator = new StaticSiteGenerator($this->uriProvider(['/a']), $this->createStub(RendererInterface::class), $dumper, new EventDispatcher(), $this->createStub(ResetInterface::class));
+
+        $output = new BufferedOutput();
+        $exit = (new GenerateStaticSiteCommand($generator, debug: false))->__invoke(new SymfonyStyle(new ArrayInput([]), $output), dryRun: true);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('requires the "staging" option', (string) preg_replace('/\s+/', ' ', $output->fetch()));
+    }
+
     public function testReportsAStagedRunAsPreparedThenPublished(): void
     {
         $renderer = $this->createStub(RendererInterface::class);

@@ -40,7 +40,7 @@ final readonly class StaticSiteGenerator
     /**
      * @return iterable<GenerationResult>
      */
-    public function generate(GenerationFilter $filter = new GenerationFilter()): iterable
+    public function generate(GenerationFilter $filter = new GenerationFilter(), bool $dryRun = false): iterable
     {
         $failure = null;
 
@@ -94,11 +94,11 @@ final readonly class StaticSiteGenerator
 
             $this->preparer?->prepare(partial: !$filter->isEmpty(), successful: $successful);
 
-            if ($successful) {
+            if ($successful && !$dryRun) {
                 $this->staging?->publish();
             }
 
-            $this->eventDispatcher->dispatch(new GenerationFinishedEvent($dumped, !$filter->isEmpty(), null === $this->staging || $successful ? GenerationStatus::Published : GenerationStatus::Discarded));
+            $this->eventDispatcher->dispatch(new GenerationFinishedEvent($dumped, !$filter->isEmpty(), null === $this->staging || ($successful && !$dryRun) ? GenerationStatus::Published : GenerationStatus::Discarded));
         } catch (\Throwable $exception) {
             $failure = $exception;
 

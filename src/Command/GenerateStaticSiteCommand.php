@@ -40,7 +40,15 @@ final readonly class GenerateStaticSiteCommand
         array $path = [],
         #[Option(description: 'Generate even though the kernel is in debug mode.')]
         bool $allowDebug = false,
+        #[Option(description: 'Prepare every page without publishing anything (requires the "staging" option).')]
+        bool $dryRun = false,
     ): int {
+        if ($dryRun && null === $this->staging) {
+            $io->error('A dry run requires the "staging" option: without it, pages are written to the storage as they are generated.');
+
+            return Command::FAILURE;
+        }
+
         if ($this->debug && !$allowDebug) {
             $io->error('Refusing to generate in debug mode: pages would carry the web debug toolbar. Run with --env=prod or --allow-debug.');
 
@@ -56,7 +64,7 @@ final readonly class GenerateStaticSiteCommand
         $progress?->start();
 
         try {
-            foreach ($this->generator->generate(new GenerationFilter($route, $path)) as $result) {
+            foreach ($this->generator->generate(new GenerationFilter($route, $path), $dryRun) as $result) {
                 if (0 === $generated + $failed) {
                     $progress?->setFormat(self::PROGRESS_FORMAT);
                 }
@@ -92,6 +100,12 @@ final readonly class GenerateStaticSiteCommand
 
         if (0 === $generated) {
             $io->warning('No page to generate: check the #[Prerender] attributes and any --route/--path filter.');
+
+            return Command::SUCCESS;
+        }
+
+        if ($dryRun) {
+            $io->success(\sprintf('Prepared %d page(s); dry run, nothing was published.', $generated));
 
             return Command::SUCCESS;
         }
