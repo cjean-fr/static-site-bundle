@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Bakslash\StaticSiteBundle\Generator;
 
 use Bakslash\StaticSiteBundle\Dumper\DumperInterface;
+use Bakslash\StaticSiteBundle\Dumper\PreparerInterface;
 use Bakslash\StaticSiteBundle\Dumper\StagingFilesystem;
 use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
-use Bakslash\StaticSiteBundle\Event\GenerationPreparedEvent;
-use Bakslash\StaticSiteBundle\Event\GenerationStartedEvent;
 use Bakslash\StaticSiteBundle\Event\GenerationStatus;
 use Bakslash\StaticSiteBundle\Event\PageDumpedEvent;
 use Bakslash\StaticSiteBundle\Event\PageFailedEvent;
@@ -34,6 +33,7 @@ final readonly class StaticSiteGenerator
         private EventDispatcherInterface $eventDispatcher,
         private ResetInterface $servicesResetter,
         private ?StagingFilesystem $staging = null,
+        private ?PreparerInterface $preparer = null,
     ) {
     }
 
@@ -45,7 +45,7 @@ final readonly class StaticSiteGenerator
         $failure = null;
 
         try {
-            $this->eventDispatcher->dispatch(new GenerationStartedEvent());
+            $this->preparer?->start();
             $seen = [];
             $dumped = [];
             $successful = true;
@@ -92,7 +92,7 @@ final readonly class StaticSiteGenerator
                 yield $result;
             }
 
-            $this->eventDispatcher->dispatch(new GenerationPreparedEvent(!$filter->isEmpty(), $successful));
+            $this->preparer?->prepare(partial: !$filter->isEmpty(), successful: $successful);
 
             if ($successful) {
                 $this->staging?->publish();

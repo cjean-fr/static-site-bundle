@@ -18,6 +18,9 @@
 - `GenerationFinishedEvent` keeps the URIs of the prepared pages even when a staged run fails,
   and carries a new `status` (`GenerationStatus::Published` or `Discarded`) telling whether
   those pages reached the storage, instead of reporting an empty URI list on failure.
+- Prepare the headers file through an explicit `PreparerInterface` the generator calls, instead
+  of the internal `GenerationStartedEvent`/`GenerationPreparedEvent` pair (both removed): the
+  lifecycle of the bundle's own output files no longer transits through the public dispatcher.
 
 ## 0.2.0
 

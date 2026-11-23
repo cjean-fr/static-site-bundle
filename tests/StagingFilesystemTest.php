@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Bakslash\StaticSiteBundle\Tests;
 
 use Bakslash\StaticSiteBundle\Dumper\FlysystemDumper;
+use Bakslash\StaticSiteBundle\Dumper\PreparerInterface;
 use Bakslash\StaticSiteBundle\Dumper\StagingFilesystem;
 use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
-use Bakslash\StaticSiteBundle\Event\GenerationPreparedEvent;
 use Bakslash\StaticSiteBundle\Event\GenerationStatus;
 use Bakslash\StaticSiteBundle\Exception\DumpingException;
 use Bakslash\StaticSiteBundle\Exception\RenderingException;
@@ -49,21 +49,39 @@ final class StagingFilesystemTest extends TestCase
     public function testPublishesPreparedFilesBeforeTheFinishedEvent(): void
     {
         $published = null;
-        $this->dispatcher->addListener(GenerationPreparedEvent::class, function (): void {
-            $this->assertSame('previous', $this->destination->read('a.html'));
-            $this->staging->write('sitemap.xml', '<urlset/>');
-        });
+        $preparer = new class($this->destination, $this->staging) implements PreparerInterface {
+            public ?string $destinationBeforePublication = null;
+
+            public function __construct(
+                private readonly FilesystemOperator $destination,
+                private readonly StagingFilesystem $staging,
+            ) {
+            }
+
+            public function start(): void
+            {
+            }
+
+            public function prepare(bool $partial, bool $successful): void
+            {
+                $this->destinationBeforePublication = $this->destination->read('a.html');
+                $this->staging->write('sitemap.xml', '<urlset/>');
+            }
+        };
         $this->dispatcher->addListener(GenerationFinishedEvent::class, function (GenerationFinishedEvent $event) use (&$published): void {
             $published = $event;
             $this->assertSame('new', $this->destination->read('a.html'));
             $this->assertSame('<urlset/>', $this->destination->read('sitemap.xml'));
         });
 
-        $run = $this->generator(['/a', '/nested/b'])->generate();
+        $run = $this->generator(['/a', '/nested/b'], preparer: $preparer)->generate();
         $this->assertInstanceOf(\Generator::class, $run);
         $run->rewind();
         $this->assertSame('previous', $this->destination->read('a.html'));
         iterator_to_array($run);
+
+        // The preparation ran before the publication: the destination still held the previous export.
+        $this->assertSame('previous', $preparer->destinationBeforePublication);
 
         $this->assertEquals(new GenerationFinishedEvent(['/a', '/nested/b']), $published);
         $this->assertSame('new', $this->destination->read('nested/b.html'));
@@ -131,14 +149,22 @@ final class StagingFilesystemTest extends TestCase
         $this->assertEquals(new GenerationFinishedEvent(['/a'], partial: true), $published);
     }
 
-    public function testFailedPreparationListenerDoesNotTouchTheDestination(): void
+    public function testFailedPreparationDoesNotTouchTheDestination(): void
     {
-        $this->dispatcher->addListener(GenerationPreparedEvent::class, static function (): void {
-            throw new DumpingException('cannot generate sitemap');
-        });
+        $preparer = new class implements PreparerInterface {
+            public function start(): void
+            {
+            }
+
+            public function prepare(bool $partial, bool $successful): void
+            {
+                throw new DumpingException('cannot generate sitemap');
+            }
+        };
+
         try {
-            iterator_to_array($this->generator(['/a'])->generate());
-            $this->fail('The listener should abort the run.');
+            iterator_to_array($this->generator(['/a'], preparer: $preparer)->generate());
+            $this->fail('The preparation should abort the run.');
         } catch (DumpingException) {
         }
 
@@ -213,8 +239,6 @@ final class StagingFilesystemTest extends TestCase
     public function testInterruptedRunDoesNotLeakHeadersIntoTheNextRun(): void
     {
         $dumper = new \Bakslash\StaticSiteBundle\Dumper\HeadersFileDumper(new FlysystemDumper($this->staging), $this->staging, '_headers', previousExport: $this->destination);
-        $this->dispatcher->addListener(\Bakslash\StaticSiteBundle\Event\GenerationStartedEvent::class, $dumper->onGenerationStarted(...));
-        $this->dispatcher->addListener(GenerationPreparedEvent::class, $dumper->onGenerationPrepared(...));
         $provider = $this->createStub(UriProviderInterface::class);
         $provider->method('provide')->willReturnOnConsecutiveCalls(['/abandoned', '/abort'], ['/a']);
         $renderer = $this->createStub(RendererInterface::class);
@@ -225,7 +249,7 @@ final class StagingFilesystemTest extends TestCase
                 default => new RenderedPage('new', 'html'),
             };
         });
-        $generator = new StaticSiteGenerator($provider, $renderer, $dumper, $this->dispatcher, $this->createStub(ResetInterface::class), $this->staging);
+        $generator = new StaticSiteGenerator($provider, $renderer, $dumper, $this->dispatcher, $this->createStub(ResetInterface::class), $this->staging, $dumper);
 
         try {
             iterator_to_array($generator->generate());
@@ -340,7 +364,7 @@ final class StagingFilesystemTest extends TestCase
     /**
      * @param list<string|UriGenerationFailure> $uris
      */
-    private function generator(array $uris): StaticSiteGenerator
+    private function generator(array $uris, ?PreparerInterface $preparer = null): StaticSiteGenerator
     {
         $provider = $this->createStub(UriProviderInterface::class);
         $provider->method('provide')->willReturn($uris);
@@ -353,6 +377,6 @@ final class StagingFilesystemTest extends TestCase
             return new RenderedPage('new', 'html');
         });
 
-        return new StaticSiteGenerator($provider, $renderer, new FlysystemDumper($this->staging), $this->dispatcher, $this->createStub(ResetInterface::class), $this->staging);
+        return new StaticSiteGenerator($provider, $renderer, new FlysystemDumper($this->staging), $this->dispatcher, $this->createStub(ResetInterface::class), $this->staging, $preparer);
     }
 }

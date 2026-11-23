@@ -6,10 +6,9 @@ namespace Bakslash\StaticSiteBundle;
 
 use Bakslash\StaticSiteBundle\DependencyInjection\Compiler\MinifierPass;
 use Bakslash\StaticSiteBundle\Dumper\HeadersFileDumper;
+use Bakslash\StaticSiteBundle\Dumper\PreparerInterface;
 use Bakslash\StaticSiteBundle\Dumper\StagingFilesystem;
 use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
-use Bakslash\StaticSiteBundle\Event\GenerationPreparedEvent;
-use Bakslash\StaticSiteBundle\Event\GenerationStartedEvent;
 use Bakslash\StaticSiteBundle\ParamsProvider\ParamsProviderInterface;
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
@@ -120,10 +119,8 @@ final class BakslashStaticSiteBundle extends AbstractBundle
             ]);
 
         if ($staging) {
-            // Prepare the headers alongside the pages, before publishing the export.
-            $definition
-                ->addTag('kernel.event_listener', ['event' => GenerationStartedEvent::class, 'method' => 'onGenerationStarted'])
-                ->addTag('kernel.event_listener', ['event' => GenerationPreparedEvent::class, 'method' => 'onGenerationPrepared']);
+            // The generator calls the preparer directly, before publishing the export.
+            $builder->setAlias(PreparerInterface::class, '.bakslash_static_site.dumper.headers_file');
         } else {
             $definition->addTag('kernel.event_listener', ['event' => GenerationFinishedEvent::class, 'method' => 'onGenerationFinished']);
         }

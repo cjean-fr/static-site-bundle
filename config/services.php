@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bakslash\StaticSiteBundle\Command\GenerateStaticSiteCommand;
 use Bakslash\StaticSiteBundle\Command\ListStaticSiteCommand;
 use Bakslash\StaticSiteBundle\Dumper\FlysystemDumper;
+use Bakslash\StaticSiteBundle\Dumper\PreparerInterface;
 use Bakslash\StaticSiteBundle\Generator\StaticSiteGenerator;
 use Bakslash\StaticSiteBundle\ParamsProvider\ParamsProviderInterface;
 use Bakslash\StaticSiteBundle\Renderer\PageRenderer;
@@ -60,6 +61,7 @@ return static function (ContainerConfigurator $container): void {
             service('event_dispatcher'),
             service('services_resetter'),
             service('.bakslash_static_site.staging')->nullOnInvalid(),
+            service(PreparerInterface::class)->nullOnInvalid(),
         ]);
 
     $services->set('.bakslash_static_site.command.generate', GenerateStaticSiteCommand::class)

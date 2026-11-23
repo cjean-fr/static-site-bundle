@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Bakslash\StaticSiteBundle\Dumper;
 
 use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
-use Bakslash\StaticSiteBundle\Event\GenerationPreparedEvent;
 use Bakslash\StaticSiteBundle\Exception\DumpingException;
 use Bakslash\StaticSiteBundle\Renderer\RenderedPage;
 use League\Flysystem\FilesystemException;
@@ -19,7 +18,7 @@ use Psr\Log\LoggerInterface;
  *
  * @internal
  */
-final class HeadersFileDumper implements DumperInterface
+final class HeadersFileDumper implements DumperInterface, PreparerInterface
 {
     /**
      * Never Set-Cookie, Cache-Control, Vary, ETag or Content-*: they describe one dynamic response.
@@ -63,20 +62,20 @@ final class HeadersFileDumper implements DumperInterface
         $this->pages[PagePath::served(PagePath::written($uri, $page->format, $this->cleanUrls))] = self::writtenHeaders($page->headers);
     }
 
-    public function onGenerationStarted(): void
+    public function start(): void
     {
         $this->pages = [];
     }
 
-    public function onGenerationPrepared(GenerationPreparedEvent $event): void
+    public function prepare(bool $partial, bool $successful): void
     {
-        if (!$event->successful) {
+        if (!$successful) {
             $this->pages = [];
 
             return;
         }
 
-        $this->writeHeaders($event->partial);
+        $this->writeHeaders($partial);
     }
 
     public function onGenerationFinished(GenerationFinishedEvent $event): void
