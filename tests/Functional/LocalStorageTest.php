@@ -50,6 +50,9 @@ final class LocalStorageTest extends KernelTestCase
             $tester = new CommandTester((new Application($kernel))->find('static-site:generate'));
 
             $this->assertSame(0, $tester->execute(['--allow-debug' => true]), $tester->getDisplay());
+            // Staging is disabled by default: pages are generated straight into the storage.
+            $this->assertStringContainsString('Generated ', $tester->getDisplay());
+            $this->assertStringNotContainsString('Prepared', $tester->getDisplay());
         } finally {
             umask($umask);
         }

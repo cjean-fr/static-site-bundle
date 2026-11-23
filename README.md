@@ -120,9 +120,19 @@ bin/console static-site:generate --env=prod --route='blog_*' --path='/blog/*'
 bin/console static-site:list
 ```
 
-Pages and the bundle's headers file are first written to a unique local temporary directory.
-If URI generation, rendering, writing a staged page, or preparing the headers fails, the staged
-files are discarded and the bundle does not publish them to the configured `storage`. Temporary
+By default each page is written to `storage` as soon as it is generated, so a page that fails
+leaves the other pages of the run published. To make a run all-or-nothing, opt into staging:
+
+```yaml
+# config/packages/bakslash_static_site.yaml
+bakslash_static_site:
+    staging: true
+```
+
+With staging enabled, pages and the bundle's headers file are first written to a unique local
+temporary directory. If URI generation, rendering, writing a staged page, or preparing the
+headers fails, the staged files are discarded and the bundle does not publish them to the
+configured `storage`. Temporary
 files are removed as execution unwinds, including after an exception or stopped iteration. A
 forcibly terminated process can leave its temporary directory behind. Cleanup errors are
 reported without losing the original failure; after a successful publication they are only
@@ -134,6 +144,7 @@ the generated files; set `staging_directory` when the system temporary directory
 ```yaml
 # config/packages/bakslash_static_site.yaml
 bakslash_static_site:
+    staging: true
     staging_directory: '%kernel.project_dir%/var'
 ```
 
@@ -183,6 +194,15 @@ bakslash_static_site:
     # Write HTML pages as "<path>/index.html" instead of "<path>.html", so any server
     # serves clean URLs without rewrite rules.
     clean_urls: false
+
+    # Prepare the export in a temporary directory and publish it only once every page
+    # succeeded: any failure discards the whole run instead of updating the storage
+    # page by page.
+    staging: false
+
+    # Directory under which the temporary export is created before publication. Defaults
+    # to the system temporary directory. Only used with "staging" enabled.
+    staging_directory: null
 
     # Write the headers that describe each page (Content-Security-Policy,
     # Strict-Transport-Security, ...) to this file of the output, in the "_headers"

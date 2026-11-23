@@ -7,6 +7,7 @@ namespace Bakslash\StaticSiteBundle;
 use Bakslash\StaticSiteBundle\DependencyInjection\Compiler\MinifierPass;
 use Bakslash\StaticSiteBundle\Dumper\HeadersFileDumper;
 use Bakslash\StaticSiteBundle\Dumper\StagingFilesystem;
+use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
 use Bakslash\StaticSiteBundle\Event\GenerationPreparedEvent;
 use Bakslash\StaticSiteBundle\Event\GenerationStartedEvent;
 use Bakslash\StaticSiteBundle\ParamsProvider\ParamsProviderInterface;
@@ -44,8 +45,12 @@ final class BakslashStaticSiteBundle extends AbstractBundle
                     ->info('Write HTML pages as "<path>/index.html" instead of "<path>.html", so the site serves clean URLs with no server rewrite rules.')
                     ->defaultFalse()
                 ->end()
+                ->booleanNode('staging')
+                    ->info('Prepare the export in a temporary directory and publish it only once every page succeeded: any failure discards the whole run instead of updating the storage page by page.')
+                    ->defaultFalse()
+                ->end()
                 ->scalarNode('staging_directory')
-                    ->info('Directory under which the temporary export is created before publication. Defaults to the system temporary directory; point it elsewhere (e.g. "/var/tmp") when the system one is a small tmpfs.')
+                    ->info('Directory under which the temporary export is created before publication. Defaults to the system temporary directory; point it elsewhere (e.g. "/var/tmp") when the system one is a small tmpfs. Only used with "staging" enabled.')
                     ->defaultNull()
                 ->end()
                 ->scalarNode('storage')
@@ -68,7 +73,7 @@ final class BakslashStaticSiteBundle extends AbstractBundle
     }
 
     /**
-     * @param array{storage: string, staging_directory: ?string, base_uri: string, minify: bool, clean_urls: bool, headers_file: ?string} $config
+     * @param array{storage: string, staging: bool, staging_directory: ?string, base_uri: string, minify: bool, clean_urls: bool, headers_file: ?string} $config
      */
     public function loadExtension(array $config, ContainerConfigurator $container, ContainerBuilder $builder): void
     {
@@ -83,34 +88,45 @@ final class BakslashStaticSiteBundle extends AbstractBundle
 
         $this->configureStorage($config['storage'], $builder);
 
-        $builder->register('.bakslash_static_site.staging', StagingFilesystem::class)
-            ->setArguments([
-                new Reference('bakslash_static_site.filesystem'),
-                $config['staging_directory'],
-                new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE),
-            ]);
+        if ($config['staging']) {
+            $builder->register('.bakslash_static_site.staging', StagingFilesystem::class)
+                ->setArguments([
+                    new Reference('bakslash_static_site.filesystem'),
+                    $config['staging_directory'],
+                    new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE),
+                ]);
+            $builder->setAlias('bakslash_static_site.dump_target', '.bakslash_static_site.staging');
+        } else {
+            $builder->setAlias('bakslash_static_site.dump_target', 'bakslash_static_site.filesystem');
+        }
 
         if (null !== $config['headers_file']) {
-            $this->configureHeadersFile($config['headers_file'], $builder);
+            $this->configureHeadersFile($config['headers_file'], $config['staging'], $builder);
         }
     }
 
-    private function configureHeadersFile(string $file, ContainerBuilder $builder): void
+    private function configureHeadersFile(string $file, bool $staging, ContainerBuilder $builder): void
     {
         // Decorating the dumper records each page as it is written, after every listener.
-        // Prepare the headers alongside the pages, before publishing the export.
-        $builder->register('.bakslash_static_site.dumper.headers_file', HeadersFileDumper::class)
+        $definition = $builder->register('.bakslash_static_site.dumper.headers_file', HeadersFileDumper::class)
             ->setDecoratedService('bakslash_static_site.dumper')
             ->setArguments([
                 new Reference('.inner'),
-                new Reference('.bakslash_static_site.staging'),
+                new Reference($staging ? '.bakslash_static_site.staging' : 'bakslash_static_site.filesystem'),
                 $file,
                 '%bakslash_static_site.clean_urls%',
                 new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE),
-                new Reference('bakslash_static_site.filesystem'),
-            ])
-            ->addTag('kernel.event_listener', ['event' => GenerationStartedEvent::class, 'method' => 'onGenerationStarted'])
-            ->addTag('kernel.event_listener', ['event' => GenerationPreparedEvent::class, 'method' => 'onGenerationPrepared']);
+                $staging ? new Reference('bakslash_static_site.filesystem') : null,
+            ]);
+
+        if ($staging) {
+            // Prepare the headers alongside the pages, before publishing the export.
+            $definition
+                ->addTag('kernel.event_listener', ['event' => GenerationStartedEvent::class, 'method' => 'onGenerationStarted'])
+                ->addTag('kernel.event_listener', ['event' => GenerationPreparedEvent::class, 'method' => 'onGenerationPrepared']);
+        } else {
+            $definition->addTag('kernel.event_listener', ['event' => GenerationFinishedEvent::class, 'method' => 'onGenerationFinished']);
+        }
     }
 
     private function configureStorage(string $storage, ContainerBuilder $builder): void

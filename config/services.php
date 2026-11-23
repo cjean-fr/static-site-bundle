@@ -48,7 +48,7 @@ return static function (ContainerConfigurator $container): void {
 
     $services->set('bakslash_static_site.dumper', FlysystemDumper::class)
         ->args([
-            service('.bakslash_static_site.staging'),
+            service('bakslash_static_site.dump_target'),
             param('bakslash_static_site.clean_urls'),
         ]);
 
@@ -59,7 +59,7 @@ return static function (ContainerConfigurator $container): void {
             service('bakslash_static_site.dumper'),
             service('event_dispatcher'),
             service('services_resetter'),
-            service('.bakslash_static_site.staging'),
+            service('.bakslash_static_site.staging')->nullOnInvalid(),
         ]);
 
     $services->set('.bakslash_static_site.command.generate', GenerateStaticSiteCommand::class)

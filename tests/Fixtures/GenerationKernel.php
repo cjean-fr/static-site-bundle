@@ -28,6 +28,7 @@ final class GenerationKernel extends TestKernel
 
         $container->extension('bakslash_static_site', [
             'minify' => true,
+            'staging' => true,
             'storage' => $this->getOutputDir(),
         ]);
 

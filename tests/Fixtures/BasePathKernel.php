@@ -26,6 +26,7 @@ final class BasePathKernel extends TestKernel
         $container->extension('bakslash_static_site', [
             'base_uri' => 'https://example.com/docs',
             'storage' => $this->getOutputDir(),
+            'staging' => true,
         ]);
 
         $container->services()->set(PagesController::class)->tag('controller.service_arguments');

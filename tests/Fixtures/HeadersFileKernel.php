@@ -37,6 +37,7 @@ final class HeadersFileKernel extends TestKernel
 
         $container->extension('bakslash_static_site', [
             'storage' => $this->getOutputDir(),
+            'staging' => true,
             'headers_file' => $this->headersFile,
         ]);
 

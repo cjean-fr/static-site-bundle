@@ -35,6 +35,8 @@ final class GenerateStaticSiteTest extends KernelTestCase
         $exitCode = $tester->execute(['--allow-debug' => true]);
 
         $this->assertSame(0, $exitCode, $tester->getDisplay());
+        // This kernel opts into staging: pages are prepared, then published.
+        $this->assertStringContainsString('then published', (string) preg_replace('/\s+/', ' ', $tester->getDisplay()));
 
         $file = $kernel->getOutputDir().'/hello.html';
         $this->assertFileExists($file);

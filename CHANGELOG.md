@@ -2,13 +2,15 @@
 
 ## Unreleased
 
-- Prepare generated pages and the headers file in a local temporary directory before streaming
-  them to the configured Flysystem storage. Failed preparation discards the staged files;
-  filtered runs preserve files outside their selection. Final publication remains a non-atomic
-  sequence of writes and can partially update storage if a transfer fails.
-- Keep `GenerationFinishedEvent` after publication on successful runs, and keep the configured
-  destination available as `bakslash_static_site.filesystem`. Application listeners and custom
-  dumpers that write directly to the destination remain outside staged preparation.
+- Add an opt-in `staging` option: prepare generated pages and the headers file in a local
+  temporary directory and stream them to the configured Flysystem storage only once every page
+  succeeded. A failed preparation discards the staged files; filtered runs preserve files
+  outside their selection. Final publication remains a non-atomic sequence of writes and can
+  partially update storage if a transfer fails. The default stays unchanged: pages are written
+  to the storage as they are generated.
+- Keep `GenerationFinishedEvent` after publication on successful staged runs, and keep the
+  configured destination available as `bakslash_static_site.filesystem`. Application listeners
+  and custom dumpers that write directly to the destination remain outside staged preparation.
 - Stage files with private permissions (0600/0700), allow pointing the staging area at another
   directory with the new `staging_directory` option, and only log a cleanup failure once the
   publication has succeeded instead of failing the command. Report a discarded run as
