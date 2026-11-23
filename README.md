@@ -379,7 +379,7 @@ Hook into a run with a normal listener or subscriber:
 | Event | When | Typical use |
 | --- | --- | --- |
 | `Event\PageRenderedEvent` | after a page renders, before it is written | transform the page with `$event->setPage(...)` |
-| `Event\PageDumpedEvent` | after a page is written to the temporary export, before publication | collect the generated URIs, e.g. a build manifest |
+| `Event\PageDumpedEvent` | after a page is written; with `staging`, written to the temporary export, before publication | collect the generated URIs, e.g. a build manifest |
 | `Event\PageFailedEvent` | a page could not be generated | log or notify; covers URI, render and write failures |
 | `Event\GenerationFinishedEvent` | once every page has been processed, even when some failed; not on an aborted run | write a sitemap from `$event->uris`, which leaves out failed pages; `$event->partial` tells a run filtered with `--route`/`--path`, `$event->status` whether the pages were published or discarded |
 
