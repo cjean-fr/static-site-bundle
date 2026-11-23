@@ -8,6 +8,7 @@ use Bakslash\StaticSiteBundle\Dumper\FlysystemDumper;
 use Bakslash\StaticSiteBundle\Dumper\StagingFilesystem;
 use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
 use Bakslash\StaticSiteBundle\Event\GenerationPreparedEvent;
+use Bakslash\StaticSiteBundle\Event\GenerationStatus;
 use Bakslash\StaticSiteBundle\Exception\DumpingException;
 use Bakslash\StaticSiteBundle\Exception\RenderingException;
 use Bakslash\StaticSiteBundle\Generator\StaticSiteGenerator;
@@ -78,7 +79,8 @@ final class StagingFilesystemTest extends TestCase
         });
         $results = iterator_to_array($this->generator(['/a', '/broken'])->generate());
 
-        $this->assertEquals(new GenerationFinishedEvent([]), $finished);
+        // The prepared URIs are still reported, marked as discarded.
+        $this->assertEquals(new GenerationFinishedEvent(['/a'], status: GenerationStatus::Discarded), $finished);
 
         $this->assertInstanceOf(RenderingException::class, $results[1]->error);
         $this->assertSame('previous', $this->destination->read('a.html'));

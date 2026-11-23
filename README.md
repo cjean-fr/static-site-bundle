@@ -378,13 +378,14 @@ Hook into a run with a normal listener or subscriber:
 | `Event\PageRenderedEvent` | after a page renders, before it is written | transform the page with `$event->setPage(...)` |
 | `Event\PageDumpedEvent` | after a page is written to the temporary export, before publication | collect the generated URIs, e.g. a build manifest |
 | `Event\PageFailedEvent` | a page could not be generated | log or notify; covers URI, render and write failures |
-| `Event\GenerationFinishedEvent` | once every page has been processed, even when some failed; not on an aborted run | write a sitemap from `$event->uris`, which leaves out failed pages; `$event->partial` tells a run filtered with `--route`/`--path` |
+| `Event\GenerationFinishedEvent` | once every page has been processed, even when some failed; not on an aborted run | write a sitemap from `$event->uris`, which leaves out failed pages; `$event->partial` tells a run filtered with `--route`/`--path`, `$event->status` whether the pages were published or discarded |
 
 `GenerationFinishedEvent` keeps its existing role: on a successful run it is dispatched after
 the prepared files have reached `storage`, so existing sitemap and deployment listeners can
 keep using `bakslash_static_site.filesystem`, which remains the configured destination. It is
-still dispatched when some pages failed, with an empty URI list because none of the staged
-pages have been published. Listeners must not treat this event alone as proof of success.
+still dispatched when some pages of a staged run failed: `$event->uris` then lists the prepared
+pages with a `Discarded` status, because none of them reached the storage. Check
+`$event->isPublished()` before acting on the URIs: the event alone is not proof of success.
 Files written by application listeners, or by a custom dumper that bypasses the bundle's
 staging filesystem, are outside the protected preparation step. A listener can therefore still
 change storage or fail after publication.

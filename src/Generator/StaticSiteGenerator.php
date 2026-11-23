@@ -9,6 +9,7 @@ use Bakslash\StaticSiteBundle\Dumper\StagingFilesystem;
 use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
 use Bakslash\StaticSiteBundle\Event\GenerationPreparedEvent;
 use Bakslash\StaticSiteBundle\Event\GenerationStartedEvent;
+use Bakslash\StaticSiteBundle\Event\GenerationStatus;
 use Bakslash\StaticSiteBundle\Event\PageDumpedEvent;
 use Bakslash\StaticSiteBundle\Event\PageFailedEvent;
 use Bakslash\StaticSiteBundle\Event\PageRenderedEvent;
@@ -97,7 +98,7 @@ final readonly class StaticSiteGenerator
                 $this->staging?->publish();
             }
 
-            $this->eventDispatcher->dispatch(new GenerationFinishedEvent(null !== $this->staging && !$successful ? [] : $dumped, !$filter->isEmpty()));
+            $this->eventDispatcher->dispatch(new GenerationFinishedEvent($dumped, !$filter->isEmpty(), null === $this->staging || $successful ? GenerationStatus::Published : GenerationStatus::Discarded));
         } catch (\Throwable $exception) {
             $failure = $exception;
 

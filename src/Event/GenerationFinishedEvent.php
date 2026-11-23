@@ -11,12 +11,19 @@ namespace Bakslash\StaticSiteBundle\Event;
 final class GenerationFinishedEvent
 {
     /**
-     * @param list<string> $uris    the URIs of the pages published during this run; empty when the run failed and its staged pages were discarded
-     * @param bool         $partial whether the run was filtered with --route or --path
+     * @param list<string>     $uris    the URIs of the pages generated during this run; with staging, they reached the storage only when the status is Published
+     * @param bool             $partial whether the run was filtered with --route or --path
+     * @param GenerationStatus $status  whether the generated pages were published to the storage or discarded with the failed staged run
      */
     public function __construct(
         public readonly array $uris,
         public readonly bool $partial = false,
+        public readonly GenerationStatus $status = GenerationStatus::Published,
     ) {
+    }
+
+    public function isPublished(): bool
+    {
+        return GenerationStatus::Published === $this->status;
     }
 }
