@@ -6,11 +6,15 @@ namespace Bakslash\StaticSiteBundle\Tests;
 
 use Bakslash\StaticSiteBundle\Command\GenerateStaticSiteCommand;
 use Bakslash\StaticSiteBundle\Dumper\DumperInterface;
+use Bakslash\StaticSiteBundle\Dumper\FlysystemDumper;
+use Bakslash\StaticSiteBundle\Dumper\StagingFilesystem;
 use Bakslash\StaticSiteBundle\Exception\RenderingException;
 use Bakslash\StaticSiteBundle\Generator\StaticSiteGenerator;
 use Bakslash\StaticSiteBundle\Renderer\RenderedPage;
 use Bakslash\StaticSiteBundle\Renderer\RendererInterface;
 use Bakslash\StaticSiteBundle\UriProvider\UriProviderInterface;
+use League\Flysystem\Filesystem;
+use League\Flysystem\Local\LocalFilesystemAdapter;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -159,6 +163,58 @@ final class GenerateStaticSiteCommandTest extends TestCase
         $this->assertNotFalse($failure);
         $this->assertStringContainsString('0 pages generated', substr($display, $failure));
         $this->assertStringNotContainsString('Resolving the pages to generate...', substr($display, $failure));
+    }
+
+    public function testReportsADiscardedStagedRunAsUnpublished(): void
+    {
+        $renderer = $this->createStub(RendererInterface::class);
+        $renderer->method('render')->willReturnCallback(static function (string $uri): RenderedPage {
+            if ('/bad' === $uri) {
+                throw new RenderingException('boom');
+            }
+
+            return new RenderedPage('content', 'html');
+        });
+
+        $destination = new Filesystem(new LocalFilesystemAdapter(sys_get_temp_dir().'/bakslash-command-test-'.bin2hex(random_bytes(8))));
+        $staging = new StagingFilesystem($destination);
+
+        try {
+            $generator = new StaticSiteGenerator($this->uriProvider(['/ok', '/bad']), $renderer, new FlysystemDumper($staging), new EventDispatcher(), $this->createStub(ResetInterface::class), $staging);
+
+            $output = new BufferedOutput();
+            $exit = (new GenerateStaticSiteCommand($generator, debug: false, staging: $staging))->__invoke(new SymfonyStyle(new ArrayInput([]), $output));
+
+            $this->assertSame(1, $exit);
+            $this->assertStringContainsString('Prepared 1 page(s), 1 failed: the run was discarded, nothing was published.', (string) preg_replace('/\s+/', ' ', $output->fetch()));
+            $this->assertFalse($destination->fileExists('ok.html'));
+        } finally {
+            $staging->discard();
+            $destination->deleteDirectory('');
+        }
+    }
+
+    public function testReportsAStagedRunAsPreparedThenPublished(): void
+    {
+        $renderer = $this->createStub(RendererInterface::class);
+        $renderer->method('render')->willReturn(new RenderedPage('content', 'html'));
+
+        $destination = new Filesystem(new LocalFilesystemAdapter(sys_get_temp_dir().'/bakslash-command-test-'.bin2hex(random_bytes(8))));
+        $staging = new StagingFilesystem($destination);
+
+        try {
+            $generator = new StaticSiteGenerator($this->uriProvider(['/a', '/b']), $renderer, new FlysystemDumper($staging), new EventDispatcher(), $this->createStub(ResetInterface::class), $staging);
+
+            $output = new BufferedOutput();
+            $exit = (new GenerateStaticSiteCommand($generator, debug: false, staging: $staging))->__invoke(new SymfonyStyle(new ArrayInput([]), $output));
+
+            $this->assertSame(0, $exit);
+            $this->assertStringContainsString('Prepared 2 page(s), then published them to the storage.', (string) preg_replace('/\s+/', ' ', $output->fetch()));
+            $this->assertTrue($destination->fileExists('a.html'));
+        } finally {
+            $staging->discard();
+            $destination->deleteDirectory('');
+        }
     }
 
     /**

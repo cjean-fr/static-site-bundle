@@ -9,6 +9,10 @@
 - Keep `GenerationFinishedEvent` after publication on successful runs, and keep the configured
   destination available as `bakslash_static_site.filesystem`. Application listeners and custom
   dumpers that write directly to the destination remain outside staged preparation.
+- Stage files with private permissions (0600/0700), allow pointing the staging area at another
+  directory with the new `staging_directory` option, and only log a cleanup failure once the
+  publication has succeeded instead of failing the command. Report a discarded run as
+  "prepared, none published" in the `static-site:generate` output.
 
 ## 0.2.0
 

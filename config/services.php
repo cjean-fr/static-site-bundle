@@ -66,6 +66,7 @@ return static function (ContainerConfigurator $container): void {
         ->args([
             service('.bakslash_static_site.generator'),
             param('kernel.debug'),
+            service('.bakslash_static_site.staging')->nullOnInvalid(),
         ])
         ->tag('console.command');
 

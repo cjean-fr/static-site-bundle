@@ -44,6 +44,10 @@ final class BakslashStaticSiteBundle extends AbstractBundle
                     ->info('Write HTML pages as "<path>/index.html" instead of "<path>.html", so the site serves clean URLs with no server rewrite rules.')
                     ->defaultFalse()
                 ->end()
+                ->scalarNode('staging_directory')
+                    ->info('Directory under which the temporary export is created before publication. Defaults to the system temporary directory; point it elsewhere (e.g. "/var/tmp") when the system one is a small tmpfs.')
+                    ->defaultNull()
+                ->end()
                 ->scalarNode('storage')
                     ->info('Where the generated site is written: a local directory path (a relative one resolves against the working directory), or a Flysystem operator service reference ("@service_id").')
                     ->defaultValue('%kernel.project_dir%/build')
@@ -64,7 +68,7 @@ final class BakslashStaticSiteBundle extends AbstractBundle
     }
 
     /**
-     * @param array{storage: string, base_uri: string, minify: bool, clean_urls: bool, headers_file: ?string} $config
+     * @param array{storage: string, staging_directory: ?string, base_uri: string, minify: bool, clean_urls: bool, headers_file: ?string} $config
      */
     public function loadExtension(array $config, ContainerConfigurator $container, ContainerBuilder $builder): void
     {
@@ -80,7 +84,11 @@ final class BakslashStaticSiteBundle extends AbstractBundle
         $this->configureStorage($config['storage'], $builder);
 
         $builder->register('.bakslash_static_site.staging', StagingFilesystem::class)
-            ->addArgument(new Reference('bakslash_static_site.filesystem'));
+            ->setArguments([
+                new Reference('bakslash_static_site.filesystem'),
+                $config['staging_directory'],
+                new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE),
+            ]);
 
         if (null !== $config['headers_file']) {
             $this->configureHeadersFile($config['headers_file'], $builder);

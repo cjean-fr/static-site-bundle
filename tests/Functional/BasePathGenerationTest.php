@@ -36,7 +36,7 @@ final class BasePathGenerationTest extends KernelTestCase
         $exitCode = $tester->execute(['--allow-debug' => true]);
 
         $this->assertSame(0, $exitCode, $tester->getDisplay());
-        $this->assertStringContainsString('Generated 3 page(s).', $tester->getDisplay());
+        $this->assertStringContainsString('Prepared 3 page(s), then published them to the storage.', (string) preg_replace('/\s+/', ' ', $tester->getDisplay()));
 
         // Written relative to the base path, not under a "docs/" directory.
         $outputDir = $kernel->getOutputDir();

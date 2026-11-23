@@ -238,10 +238,7 @@ final class StagingFilesystemTest extends TestCase
 
     public function testCleanupFailureKeepsThePrimaryError(): void
     {
-        $staging = new StagingFilesystem($this->destination);
-        $adapter = $this->createStub(\League\Flysystem\FilesystemAdapter::class);
-        $adapter->method('deleteDirectory')->willThrowException(\League\Flysystem\UnableToDeleteDirectory::atLocation('temporary'));
-        (new \ReflectionProperty(Filesystem::class, 'adapter'))->setValue($staging, $adapter);
+        [$staging, $restore] = $this->stagingWithAnUndeletableRoot();
         $failure = new DumpingException('Publication failed; destination may be partially updated.');
 
         try {
@@ -251,7 +248,91 @@ final class StagingFilesystemTest extends TestCase
             $this->assertSame($failure, $exception->getPrevious());
             $this->assertStringStartsWith('Publication failed; destination may be partially updated.', $exception->getMessage());
             $this->assertStringContainsString('cleanup also failed', $exception->getMessage());
+        } finally {
+            $restore();
         }
+    }
+
+    public function testCleanupFailureAfterASuccessfulRunIsOnlyLogged(): void
+    {
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())->method('warning')->with('Cannot remove the temporary export directory: {message}');
+        [$staging, $restore] = $this->stagingWithAnUndeletableRoot($logger);
+
+        try {
+            $staging->discard();
+        } finally {
+            $restore();
+        }
+    }
+
+    public function testStagedFilesArePrivateAndTheStagingDirectoryIsConfigurable(): void
+    {
+        $parent = sys_get_temp_dir().'/bakslash-staging-parent-'.bin2hex(random_bytes(8));
+        mkdir($parent, 0700, true);
+        $staging = new StagingFilesystem($this->destination, $parent);
+
+        try {
+            $staging->write('nested/page.html', 'content');
+
+            $roots = glob($parent.'/bakslash-static-site-*') ?: [];
+            $this->assertCount(1, $roots);
+            clearstatcache();
+            $this->assertSame(0700, fileperms($roots[0]) & 0777);
+            $this->assertSame(0700, fileperms($roots[0].'/nested') & 0777);
+            $this->assertSame(0600, fileperms($roots[0].'/nested/page.html') & 0777);
+        } finally {
+            $staging->discard();
+            rmdir($parent);
+        }
+    }
+
+    public function testPublishFailureAbortsTheRunWithoutDispatchingTheFinishedEvent(): void
+    {
+        $destination = $this->createStub(FilesystemOperator::class);
+        $destination->method('writeStream')->willThrowException(UnableToWriteFile::atLocation('a.html'));
+        $staging = new StagingFilesystem($destination);
+        $finished = false;
+        $this->dispatcher->addListener(GenerationFinishedEvent::class, static function () use (&$finished): void {
+            $finished = true;
+        });
+
+        $provider = $this->createStub(UriProviderInterface::class);
+        $provider->method('provide')->willReturn(['/a']);
+        $renderer = $this->createStub(RendererInterface::class);
+        $renderer->method('render')->willReturn(new RenderedPage('new', 'html'));
+        $generator = new StaticSiteGenerator($provider, $renderer, new FlysystemDumper($staging), $this->dispatcher, $this->createStub(ResetInterface::class), $staging);
+
+        try {
+            iterator_to_array($generator->generate());
+            $this->fail('The publication should fail.');
+        } catch (DumpingException $exception) {
+            $this->assertStringContainsString('partially updated', $exception->getMessage());
+        }
+
+        $this->assertFalse($finished);
+        $this->assertSame([], $staging->listContents('', true)->toArray());
+    }
+
+    /**
+     * Stages in a directory whose parent denies removal, so discard() fails without touching the
+     * staged files. The returned closure restores the permissions.
+     *
+     * @return array{StagingFilesystem, callable(): void}
+     */
+    private function stagingWithAnUndeletableRoot(?\Psr\Log\LoggerInterface $logger = null): array
+    {
+        $parent = sys_get_temp_dir().'/bakslash-staging-parent-'.bin2hex(random_bytes(8));
+        mkdir($parent, 0700, true);
+        $staging = new StagingFilesystem($this->destination, $parent, $logger);
+        $staging->write('page.html', 'content');
+        chmod($parent, 0500);
+
+        return [$staging, static function () use ($parent, $staging): void {
+            chmod($parent, 0700);
+            $staging->discard();
+            rmdir($parent);
+        }];
     }
 
     /**

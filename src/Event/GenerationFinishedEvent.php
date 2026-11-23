@@ -11,7 +11,7 @@ namespace Bakslash\StaticSiteBundle\Event;
 final class GenerationFinishedEvent
 {
     /**
-     * @param list<string> $uris    the URIs of the pages written during this run
+     * @param list<string> $uris    the URIs of the pages published during this run; empty when the run failed and its staged pages were discarded
      * @param bool         $partial whether the run was filtered with --route or --path
      */
     public function __construct(

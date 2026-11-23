@@ -76,15 +76,20 @@ final class HeadersFileDumper implements DumperInterface
             return;
         }
 
-        $this->onGenerationFinished(new GenerationFinishedEvent([], $event->partial));
+        $this->writeHeaders($event->partial);
     }
 
     public function onGenerationFinished(GenerationFinishedEvent $event): void
     {
+        $this->writeHeaders($event->partial);
+    }
+
+    private function writeHeaders(bool $partial): void
+    {
         [$pages, $this->pages] = [$this->pages, []];
 
         // A filtered run only sees part of the site, so it cannot tell what every page shares.
-        if ($event->partial || [] === $pages) {
+        if ($partial || [] === $pages) {
             return;
         }
 
@@ -148,7 +153,8 @@ final class HeadersFileDumper implements DumperInterface
 
     /**
      * What every page sending headers shares goes to "/*", and each page keeps a rule for
-     * what differs. A page sending none, such as a redirect stub, is left out of "/*".
+     * what differs. "/*" applies to every path: a page sending no listed header, such as a
+     * redirect stub, gets no rule of its own but still inherits the shared ones.
      *
      * @param array<string, array<string, string>> $pages
      *

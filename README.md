@@ -125,8 +125,17 @@ If URI generation, rendering, writing a staged page, or preparing the headers fa
 files are discarded and the bundle does not publish them to the configured `storage`. Temporary
 files are removed as execution unwinds, including after an exception or stopped iteration. A
 forcibly terminated process can leave its temporary directory behind. Cleanup errors are
-reported without losing the original failure. The temporary filesystem needs enough free
-space for the generated files.
+reported without losing the original failure; after a successful publication they are only
+logged, since the generated site is already on the storage. Staged files are private to the
+current user (0600/0700 permissions). The temporary filesystem needs enough free space for
+the generated files; set `staging_directory` when the system temporary directory is too small
+(e.g. a tmpfs):
+
+```yaml
+# config/packages/bakslash_static_site.yaml
+bakslash_static_site:
+    staging_directory: '%kernel.project_dir%/var'
+```
 
 Once preparation succeeds, files are streamed to `storage` through Flysystem. This works with
 local directories and operator services such as S3, without reading, listing or checksumming
@@ -140,8 +149,9 @@ targeting the same storage are not coordinated. Do not use the storage as a live
 while publishing if readers need a consistent snapshot.
 
 The command **only writes generated files, and never deletes anything.** Filtered runs leave
-files outside the selection untouched, including an existing headers file. Removed or renamed
-routes leave their old files behind. Publish the output in a separate deployment step and let
+files outside the selection untouched, including an existing headers file. A filtered run
+therefore leaves the storage in a mixed state: updated pages beside older ones, and a headers
+file computed for an earlier full run. Removed or renamed routes leave their old files behind. Publish the output in a separate deployment step and let
 that step prune:
 
 ```bash

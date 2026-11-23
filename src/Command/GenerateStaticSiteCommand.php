@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bakslash\StaticSiteBundle\Command;
 
+use Bakslash\StaticSiteBundle\Dumper\StagingFilesystem;
 use Bakslash\StaticSiteBundle\Generator\StaticSiteGenerator;
 use Bakslash\StaticSiteBundle\UriProvider\GenerationFilter;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -23,6 +24,7 @@ final readonly class GenerateStaticSiteCommand
     public function __construct(
         private StaticSiteGenerator $generator,
         private bool $debug,
+        private ?StagingFilesystem $staging = null,
     ) {
     }
 
@@ -80,7 +82,10 @@ final readonly class GenerateStaticSiteCommand
         }
 
         if ($failed > 0) {
-            $io->error(\sprintf('Generated %d page(s), %d failed.', $generated, $failed));
+            // A staged run is discarded as a whole: no page reached the storage.
+            $io->error(null !== $this->staging
+                ? \sprintf('Prepared %d page(s), %d failed: the run was discarded, nothing was published.', $generated, $failed)
+                : \sprintf('Generated %d page(s), %d failed.', $generated, $failed));
 
             return Command::FAILURE;
         }
@@ -91,7 +96,9 @@ final readonly class GenerateStaticSiteCommand
             return Command::SUCCESS;
         }
 
-        $io->success(\sprintf('Generated %d page(s).', $generated));
+        $io->success(null !== $this->staging
+            ? \sprintf('Prepared %d page(s), then published them to the storage.', $generated)
+            : \sprintf('Generated %d page(s).', $generated));
 
         return Command::SUCCESS;
     }
