@@ -361,6 +361,28 @@ final class StagingFilesystemTest extends TestCase
         }];
     }
 
+    public function testPublishesAManifestDescribingTheRunAfterItsFiles(): void
+    {
+        iterator_to_array($this->generator(['/a', '/nested/b'])->generate());
+
+        /** @var array{generatedAt: string, files: array<string, string>} $manifest */
+        $manifest = json_decode($this->destination->read(StagingFilesystem::MANIFEST_FILE), true, 512, \JSON_THROW_ON_ERROR);
+        $this->assertArrayHasKey('generatedAt', $manifest);
+        $this->assertSame(
+            ['a.html' => hash('sha256', 'new'), 'nested/b.html' => hash('sha256', 'new')],
+            $manifest['files'],
+        );
+    }
+
+    public function testFilteredOrFailedRunsLeaveNoManifest(): void
+    {
+        iterator_to_array($this->generator(['/a'])->generate(new GenerationFilter(paths: ['/a'])));
+        $this->assertFalse($this->destination->fileExists(StagingFilesystem::MANIFEST_FILE));
+
+        iterator_to_array($this->generator(['/a', '/broken'])->generate());
+        $this->assertFalse($this->destination->fileExists(StagingFilesystem::MANIFEST_FILE));
+    }
+
     /**
      * @param list<string|UriGenerationFailure> $uris
      */

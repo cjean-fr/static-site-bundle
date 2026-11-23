@@ -15,6 +15,8 @@
   directory with the new `staging_directory` option, and only log a cleanup failure once the
   publication has succeeded instead of failing the command. Report a discarded run as
   "prepared, none published" in the `static-site:generate` output.
+- Write a `_static-site.json` manifest (files of the run, SHA-256 hashes, generation time)
+  as the last publication step of a full staged run; filtered and dry runs write none.
 - Add `--dry-run` to `static-site:generate` (requires `staging`): prepare the whole export
   and discard it without publishing anything.
 - `GenerationFinishedEvent` keeps the URIs of the prepared pages even when a staged run fails,

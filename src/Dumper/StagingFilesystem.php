@@ -21,6 +21,13 @@ use Psr\Log\LoggerInterface;
  */
 final class StagingFilesystem extends Filesystem
 {
+    /**
+     * Describes the last fully published run: which files belong to it, and their hashes.
+     */
+    public const string MANIFEST_FILE = '_static-site.json';
+
+    private readonly string $root;
+
     public function __construct(
         private readonly FilesystemOperator $destination,
         ?string $stagingDirectory = null,
@@ -28,16 +35,18 @@ final class StagingFilesystem extends Filesystem
     ) {
         // The staged pages are not published yet: keep them unreadable to other local users.
         $visibility = new PortableVisibilityConverter(filePublic: 0600, directoryPublic: 0700);
+        $this->root = self::createRoot($stagingDirectory ?? sys_get_temp_dir());
 
         parent::__construct(
-            new LocalFilesystemAdapter(self::createRoot($stagingDirectory ?? sys_get_temp_dir()), $visibility),
+            new LocalFilesystemAdapter($this->root, $visibility),
             [Config::OPTION_VISIBILITY => Visibility::PRIVATE],
         );
     }
 
-    public function publish(): void
+    public function publish(bool $partial = false): void
     {
         try {
+            $files = [];
             foreach ($this->listContents('', true) as $entry) {
                 if (!$entry->isFile()) {
                     continue;
@@ -49,6 +58,17 @@ final class StagingFilesystem extends Filesystem
                 } finally {
                     fclose($stream);
                 }
+                $files[$entry->path()] = hash_file('sha256', $this->root.'/'.$entry->path());
+            }
+
+            // Last, so a failed transfer leaves the previous manifest untouched; a filtered run
+            // only sees part of the site and cannot describe it.
+            if (!$partial) {
+                ksort($files);
+                $this->destination->write(self::MANIFEST_FILE, json_encode([
+                    'generatedAt' => (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM),
+                    'files' => $files,
+                ], \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR)."\n");
             }
         } catch (FilesystemException $exception) {
             throw new DumpingException('Cannot publish the generated site. The destination may have been partially updated.', previous: $exception);

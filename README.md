@@ -156,6 +156,12 @@ local directories and operator services such as S3, without reading, listing or 
 each destination object first. Every generated file is uploaded, even when its content has not
 changed. The configured adapter's write options and visibility still apply.
 
+A full run ends the publication with a `_static-site.json` manifest at the storage root: the
+files of the run with their SHA-256 hashes, and the generation time. It tells which files
+belong to the last published run and lets a deployment step verify the storage against it.
+It is written last, so a failed transfer leaves the previous manifest in place; filtered
+(`--route`/`--path`) and dry runs write none, since they cannot describe the whole site.
+
 The final transfer is **not atomic**, even for a local destination: Flysystem does not offer a
 portable directory swap or multi-file transaction. A transfer failure can leave a mix of old
 and new files; the command fails and reports that publication may be partial. Concurrent runs

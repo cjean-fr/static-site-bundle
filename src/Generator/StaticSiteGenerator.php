@@ -95,7 +95,7 @@ final readonly class StaticSiteGenerator
             $this->preparer?->prepare(partial: !$filter->isEmpty(), successful: $successful);
 
             if ($successful && !$dryRun) {
-                $this->staging?->publish();
+                $this->staging?->publish(partial: !$filter->isEmpty());
             }
 
             $this->eventDispatcher->dispatch(new GenerationFinishedEvent($dumped, !$filter->isEmpty(), null === $this->staging || ($successful && !$dryRun) ? GenerationStatus::Published : GenerationStatus::Discarded));
