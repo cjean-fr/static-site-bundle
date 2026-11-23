@@ -34,6 +34,7 @@ final readonly class StaticSiteGenerator
         private ResetInterface $servicesResetter,
         private ?StagingFilesystem $staging = null,
         private ?PreparerInterface $preparer = null,
+        private bool $publishesFailures = false,
     ) {
     }
 
@@ -92,13 +93,16 @@ final readonly class StaticSiteGenerator
                 yield $result;
             }
 
-            $this->preparer?->prepare(partial: !$filter->isEmpty(), successful: $successful);
+            $publishable = $successful || $this->publishesFailures;
 
-            if ($successful && !$dryRun) {
-                $this->staging?->publish(partial: !$filter->isEmpty());
+            $this->preparer?->prepare(partial: !$filter->isEmpty(), successful: $publishable);
+
+            if ($publishable && !$dryRun) {
+                // A run that failed or was filtered cannot describe the whole site: no manifest.
+                $this->staging?->publish(partial: !$filter->isEmpty() || !$successful);
             }
 
-            $this->eventDispatcher->dispatch(new GenerationFinishedEvent($dumped, !$filter->isEmpty(), null === $this->staging || ($successful && !$dryRun) ? GenerationStatus::Published : GenerationStatus::Discarded));
+            $this->eventDispatcher->dispatch(new GenerationFinishedEvent($dumped, !$filter->isEmpty(), null === $this->staging || ($publishable && !$dryRun) ? GenerationStatus::Published : GenerationStatus::Discarded));
         } catch (\Throwable $exception) {
             $failure = $exception;
 

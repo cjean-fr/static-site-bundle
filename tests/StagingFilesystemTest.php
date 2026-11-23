@@ -361,6 +361,32 @@ final class StagingFilesystemTest extends TestCase
         }];
     }
 
+    public function testFailuresCanStillPublishTheSuccessfulPages(): void
+    {
+        $provider = $this->createStub(UriProviderInterface::class);
+        $provider->method('provide')->willReturn(['/a', '/broken']);
+        $renderer = $this->createStub(RendererInterface::class);
+        $renderer->method('render')->willReturnCallback(static function (string $uri): RenderedPage {
+            if ('/broken' === $uri) {
+                throw new RenderingException('failed');
+            }
+
+            return new RenderedPage('new', 'html');
+        });
+        $published = null;
+        $this->dispatcher->addListener(GenerationFinishedEvent::class, static function (GenerationFinishedEvent $event) use (&$published): void {
+            $published = $event;
+        });
+        $generator = new StaticSiteGenerator($provider, $renderer, new FlysystemDumper($this->staging), $this->dispatcher, $this->createStub(ResetInterface::class), $this->staging, publishesFailures: true);
+
+        iterator_to_array($generator->generate());
+
+        $this->assertSame('new', $this->destination->read('a.html'));
+        $this->assertEquals(new GenerationFinishedEvent(['/a']), $published);
+        // A run with failures cannot describe the whole site: no manifest.
+        $this->assertFalse($this->destination->fileExists(StagingFilesystem::MANIFEST_FILE));
+    }
+
     public function testPublishesAManifestDescribingTheRunAfterItsFiles(): void
     {
         iterator_to_array($this->generator(['/a', '/nested/b'])->generate());

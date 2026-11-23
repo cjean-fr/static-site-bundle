@@ -25,6 +25,7 @@ final readonly class GenerateStaticSiteCommand
         private StaticSiteGenerator $generator,
         private bool $debug,
         private ?StagingFilesystem $staging = null,
+        private bool $publishesFailures = false,
     ) {
     }
 
@@ -91,7 +92,7 @@ final readonly class GenerateStaticSiteCommand
 
         if ($failed > 0) {
             // A staged run is discarded as a whole: no page reached the storage.
-            $io->error(null !== $this->staging
+            $io->error(null !== $this->staging && !$this->publishesFailures
                 ? \sprintf('Prepared %d page(s), %d failed: the run was discarded, nothing was published.', $generated, $failed)
                 : \sprintf('Generated %d page(s), %d failed.', $generated, $failed));
 

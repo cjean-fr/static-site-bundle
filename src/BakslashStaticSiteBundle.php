@@ -48,6 +48,11 @@ final class BakslashStaticSiteBundle extends AbstractBundle
                     ->info('Prepare the export in a temporary directory and publish it only once every page succeeded: any failure discards the whole run instead of updating the storage page by page.')
                     ->defaultFalse()
                 ->end()
+                ->enumNode('staging_failure')
+                    ->info('With "staging", what to do when some pages fail: "discard" publishes nothing, "publish" still publishes the pages that succeeded.')
+                    ->values(['discard', 'publish'])
+                    ->defaultValue('discard')
+                ->end()
                 ->scalarNode('staging_directory')
                     ->info('Directory under which the temporary export is created before publication. Defaults to the system temporary directory; point it elsewhere (e.g. "/var/tmp") when the system one is a small tmpfs. Only used with "staging" enabled.')
                     ->defaultNull()
@@ -72,13 +77,14 @@ final class BakslashStaticSiteBundle extends AbstractBundle
     }
 
     /**
-     * @param array{storage: string, staging: bool, staging_directory: ?string, base_uri: string, minify: bool, clean_urls: bool, headers_file: ?string} $config
+     * @param array{storage: string, staging: bool, staging_failure: 'discard'|'publish', staging_directory: ?string, base_uri: string, minify: bool, clean_urls: bool, headers_file: ?string} $config
      */
     public function loadExtension(array $config, ContainerConfigurator $container, ContainerBuilder $builder): void
     {
         $builder->setParameter('bakslash_static_site.base_uri', $config['base_uri']);
         $builder->setParameter('bakslash_static_site.minify', $config['minify']);
         $builder->setParameter('bakslash_static_site.clean_urls', $config['clean_urls']);
+        $builder->setParameter('bakslash_static_site.staging_publishes_failures', 'publish' === $config['staging_failure']);
 
         $builder->registerForAutoconfiguration(ParamsProviderInterface::class)
             ->addTag(ParamsProviderInterface::TAG);

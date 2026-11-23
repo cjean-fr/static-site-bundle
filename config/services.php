@@ -62,6 +62,7 @@ return static function (ContainerConfigurator $container): void {
             service('services_resetter'),
             service('.bakslash_static_site.staging')->nullOnInvalid(),
             service(PreparerInterface::class)->nullOnInvalid(),
+            param('bakslash_static_site.staging_publishes_failures'),
         ]);
 
     $services->set('.bakslash_static_site.command.generate', GenerateStaticSiteCommand::class)
@@ -69,6 +70,7 @@ return static function (ContainerConfigurator $container): void {
             service('.bakslash_static_site.generator'),
             param('kernel.debug'),
             service('.bakslash_static_site.staging')->nullOnInvalid(),
+            param('bakslash_static_site.staging_publishes_failures'),
         ])
         ->tag('console.command');
 

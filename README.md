@@ -209,6 +209,10 @@ bakslash_static_site:
     # page by page.
     staging: false
 
+    # With "staging", what to do when some pages fail: "discard" publishes nothing,
+    # "publish" still publishes the pages that succeeded.
+    staging_failure: discard
+
     # Directory under which the temporary export is created before publication. Defaults
     # to the system temporary directory. Only used with "staging" enabled.
     staging_directory: null
