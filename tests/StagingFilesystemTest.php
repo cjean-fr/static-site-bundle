@@ -409,11 +409,89 @@ final class StagingFilesystemTest extends TestCase
         $this->assertFalse($this->destination->fileExists(StagingFilesystem::MANIFEST_FILE));
     }
 
+    public function testPruneRemovesTheFilesTheRunNoLongerGenerates(): void
+    {
+        $staging = new StagingFilesystem($this->destination, prune: true);
+        $this->destination->write('old.html', 'obsolete');
+        $this->writePreviousManifest(['a.html', 'old.html']);
+
+        iterator_to_array($this->generator(['/a', '/nested/b'], staging: $staging)->generate());
+
+        $this->assertSame('new', $this->destination->read('a.html'));
+        $this->assertFalse($this->destination->fileExists('old.html'));
+        // Not listed by the previous manifest: not the bundle's to remove.
+        $this->assertSame('keep', $this->destination->read('untouched.html'));
+
+        /** @var array{files: array<string, string>} $manifest */
+        $manifest = json_decode($this->destination->read(StagingFilesystem::MANIFEST_FILE), true, 512, \JSON_THROW_ON_ERROR);
+        $this->assertSame(['a.html', 'nested/b.html'], array_keys($manifest['files']));
+    }
+
+    public function testFilteredAndFailedRunsNeverPrune(): void
+    {
+        $staging = new StagingFilesystem($this->destination, prune: true);
+        $this->destination->write('old.html', 'obsolete');
+        $this->writePreviousManifest(['a.html', 'old.html']);
+
+        // A filtered run only sees part of the site: it cannot know old.html is obsolete.
+        iterator_to_array($this->generator(['/a'], staging: $staging)->generate(new GenerationFilter(paths: ['/a'])));
+        $this->assertTrue($this->destination->fileExists('old.html'));
+
+        // A failed run publishes nothing at all.
+        iterator_to_array($this->generator(['/a', '/broken'], staging: $staging)->generate());
+        $this->assertSame('obsolete', $this->destination->read('old.html'));
+    }
+
+    public function testPruneIgnoresADestinationWithoutUsableManifest(): void
+    {
+        $staging = new StagingFilesystem($this->destination, prune: true);
+        $this->destination->write('old.html', 'obsolete');
+
+        // No manifest at all.
+        iterator_to_array($this->generator(['/a'], staging: $staging)->generate());
+        $this->assertSame('obsolete', $this->destination->read('old.html'));
+
+        // A manifest that is not one.
+        $this->destination->write(StagingFilesystem::MANIFEST_FILE, '{invalid');
+        iterator_to_array($this->generator(['/a'], staging: $staging)->generate());
+        $this->assertSame('obsolete', $this->destination->read('old.html'));
+    }
+
+    public function testAPruningFailureIsLoggedWithoutFailingThePublication(): void
+    {
+        $destination = $this->createMock(FilesystemOperator::class);
+        $destination->method('read')->willReturn(json_encode(['files' => ['old.html' => 'hash']]));
+        $destination->method('delete')->willThrowException(\League\Flysystem\UnableToDeleteFile::atLocation('old.html'));
+        $destination->expects($this->once())->method('write')->with(StagingFilesystem::MANIFEST_FILE);
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())->method('warning')->with('Cannot remove the obsolete file "{path}" from the storage: {message}');
+        $staging = new StagingFilesystem($destination, logger: $logger, prune: true);
+
+        try {
+            $staging->write('a.html', 'new');
+            $staging->publish();
+        } finally {
+            $staging->discard();
+        }
+    }
+
+    /**
+     * @param list<string> $files
+     */
+    private function writePreviousManifest(array $files): void
+    {
+        $this->destination->write(StagingFilesystem::MANIFEST_FILE, json_encode([
+            'generatedAt' => '2026-11-23T00:00:00+00:00',
+            'files' => array_fill_keys($files, 'previous-hash'),
+        ], \JSON_THROW_ON_ERROR));
+    }
+
     /**
      * @param list<string|UriGenerationFailure> $uris
      */
-    private function generator(array $uris, ?PreparerInterface $preparer = null): StaticSiteGenerator
+    private function generator(array $uris, ?PreparerInterface $preparer = null, ?StagingFilesystem $staging = null): StaticSiteGenerator
     {
+        $staging ??= $this->staging;
         $provider = $this->createStub(UriProviderInterface::class);
         $provider->method('provide')->willReturn($uris);
         $renderer = $this->createStub(RendererInterface::class);
@@ -425,6 +503,6 @@ final class StagingFilesystemTest extends TestCase
             return new RenderedPage('new', 'html');
         });
 
-        return new StaticSiteGenerator($provider, $renderer, new FlysystemDumper($this->staging), $this->dispatcher, $this->createStub(ResetInterface::class), $this->staging, null === $preparer ? [] : [$preparer]);
+        return new StaticSiteGenerator($provider, $renderer, new FlysystemDumper($staging), $this->dispatcher, $this->createStub(ResetInterface::class), $staging, null === $preparer ? [] : [$preparer]);
     }
 }

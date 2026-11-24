@@ -168,11 +168,29 @@ and new files; the command fails and reports that publication may be partial. Co
 targeting the same storage are not coordinated. Do not use the storage as a live deployment
 while publishing if readers need a consistent snapshot.
 
-The command **only writes generated files, and never deletes anything.** Filtered runs leave
-files outside the selection untouched, including an existing headers file. A filtered run
-therefore leaves the storage in a mixed state: updated pages beside older ones, and a headers
-file computed for an earlier full run. Removed or renamed routes leave their old files behind. Publish the output in a separate deployment step and let
-that step prune:
+By default the command **only writes generated files, and never deletes anything.** Filtered
+runs leave files outside the selection untouched, including an existing headers file. A
+filtered run therefore leaves the storage in a mixed state: updated pages beside older ones,
+and a headers file computed for an earlier full run. Removed or renamed routes leave their
+old files behind.
+
+With `staging`, a full run can instead remove the files the previous published run generated
+and the new one no longer does, so the storage reflects the last run:
+
+```yaml
+# config/packages/bakslash_static_site.yaml
+bakslash_static_site:
+    staging: true
+    prune: true
+```
+
+Pruning relies on the previous run's `_static-site.json` manifest: only the files it lists
+are ever deleted, anything else on the storage is left alone. Only a complete, successful
+run prunes: filtered, dry and failed runs (including `staging_failure: publish`) never
+delete, and a storage without a readable previous manifest is pruned of nothing. A file
+that cannot be deleted is reported in the logs without failing the publication. Without
+staging, or for a deployment you fully control, keep publishing the output in a separate
+step and let that step prune:
 
 ```bash
 rsync -a --delete build/ user@host:/var/www/site/
@@ -216,6 +234,10 @@ bakslash_static_site:
     # Directory under which the temporary export is created before publication. Defaults
     # to the system temporary directory. Only used with "staging" enabled.
     staging_directory: null
+
+    # With "staging", delete the files the previous published run generated and the new
+    # one no longer does, based on its manifest. Only a complete, successful run prunes.
+    prune: false
 
     # Write the headers that describe each page (Content-Security-Policy,
     # Strict-Transport-Security, ...) to this file of the output, in the "_headers"

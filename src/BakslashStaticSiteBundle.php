@@ -27,6 +27,10 @@ final class BakslashStaticSiteBundle extends AbstractBundle
     public function configure(DefinitionConfigurator $definition): void
     {
         $definition->rootNode()
+            ->validate()
+                ->ifTrue(static fn (array $value): bool => ($value['prune'] ?? false) && !($value['staging'] ?? false))
+                ->thenInvalid('The "prune" option requires "staging": pruning relies on the manifest only a staged run publishes.')
+            ->end()
             ->children()
                 ->scalarNode('base_uri')
                     ->info('The absolute URL the generated site is served from, used for the absolute links baked into the pages (canonical, og:, sitemaps, feeds); it may include a base path (e.g. "https://example.com/docs"). Defaults to the router default URI (framework.router.default_uri) when left empty.')
@@ -57,6 +61,10 @@ final class BakslashStaticSiteBundle extends AbstractBundle
                     ->info('Directory under which the temporary export is created before publication. Defaults to the system temporary directory; point it elsewhere (e.g. "/var/tmp") when the system one is a small tmpfs. Only used with "staging" enabled.')
                     ->defaultNull()
                 ->end()
+                ->booleanNode('prune')
+                    ->info('With "staging", delete the files the previous published run generated and the new one no longer does, so the storage reflects the last full run. Based on the previous manifest: only the files it lists are ever deleted. Only a complete, successful run prunes.')
+                    ->defaultFalse()
+                ->end()
                 ->scalarNode('storage')
                     ->info('Where the generated site is written: a local directory path (a relative one resolves against the working directory), or a Flysystem operator service reference ("@service_id").')
                     ->defaultValue('%kernel.project_dir%/build')
@@ -77,7 +85,7 @@ final class BakslashStaticSiteBundle extends AbstractBundle
     }
 
     /**
-     * @param array{storage: string, staging: bool, staging_failure: 'discard'|'publish', staging_directory: ?string, base_uri: string, minify: bool, clean_urls: bool, headers_file: ?string} $config
+     * @param array{storage: string, staging: bool, staging_failure: 'discard'|'publish', staging_directory: ?string, prune: bool, base_uri: string, minify: bool, clean_urls: bool, headers_file: ?string} $config
      */
     public function loadExtension(array $config, ContainerConfigurator $container, ContainerBuilder $builder): void
     {
@@ -102,6 +110,7 @@ final class BakslashStaticSiteBundle extends AbstractBundle
                     new Reference('bakslash_static_site.filesystem'),
                     $config['staging_directory'],
                     new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE),
+                    $config['prune'],
                 ]);
             $builder->setAlias('bakslash_static_site.dump_target', '.bakslash_static_site.staging');
         } else {

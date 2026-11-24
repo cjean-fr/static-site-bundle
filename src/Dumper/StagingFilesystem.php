@@ -32,6 +32,7 @@ final class StagingFilesystem extends Filesystem
         private readonly FilesystemOperator $destination,
         ?string $stagingDirectory = null,
         private readonly ?LoggerInterface $logger = null,
+        private readonly bool $prune = false,
     ) {
         // The staged pages are not published yet: keep them unreadable to other local users.
         $visibility = new PortableVisibilityConverter(filePublic: 0600, directoryPublic: 0700);
@@ -64,6 +65,10 @@ final class StagingFilesystem extends Filesystem
             // Last, so a failed transfer leaves the previous manifest untouched; a filtered run
             // only sees part of the site and cannot describe it.
             if (!$partial) {
+                if ($this->prune) {
+                    $this->pruneObsoleteFiles($files);
+                }
+
                 ksort($files);
                 $this->destination->write(self::MANIFEST_FILE, json_encode([
                     'generatedAt' => (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM),
@@ -72,6 +77,46 @@ final class StagingFilesystem extends Filesystem
             }
         } catch (FilesystemException $exception) {
             throw new DumpingException('Cannot publish the generated site. The destination may have been partially updated.', previous: $exception);
+        }
+    }
+
+    /**
+     * Removes the files the previous published run generated and this one no longer does, so
+     * the storage reflects the new run. Only the files listed by the previous manifest are
+     * candidates: anything else on the storage is left alone, and without a readable manifest
+     * nothing is pruned.
+     *
+     * @param array<string, string|false> $files the files of the run being published, with their hashes
+     */
+    private function pruneObsoleteFiles(array $files): void
+    {
+        try {
+            $manifest = json_decode($this->destination->read(self::MANIFEST_FILE), true);
+        } catch (FilesystemException) {
+            // No readable manifest: the previous run cannot be described, so nothing is pruned.
+            return;
+        }
+
+        if (!\is_array($manifest) || !\is_array($manifest['files'] ?? null)) {
+            return;
+        }
+
+        foreach (array_keys($manifest['files']) as $path) {
+            if (!\is_string($path) || isset($files[$path]) || self::MANIFEST_FILE === $path) {
+                continue;
+            }
+
+            try {
+                $this->destination->delete($path);
+            } catch (FilesystemException $exception) {
+                // The publication itself succeeded: only an obsolete file is left behind,
+                // report it instead of failing the command.
+                $this->logger?->warning('Cannot remove the obsolete file "{path}" from the storage: {message}', [
+                    'path' => $path,
+                    'message' => $exception->getMessage(),
+                    'exception' => $exception,
+                ]);
+            }
         }
     }
 

@@ -21,6 +21,10 @@
   still publish the pages that succeeded, instead of discarding the whole run.
 - Write a `_static-site.json` manifest (files of the run, SHA-256 hashes, generation time)
   as the last publication step of a full staged run; filtered and dry runs write none.
+- Add the `prune` option (requires `staging`): a complete, successful run deletes the files
+  the previous published run generated and the new one no longer does, based on the previous
+  manifest, so the storage reflects the last run. Files the manifest does not list are left
+  untouched, and a deletion failure is logged without failing the publication.
 - Add `--dry-run` to `static-site:generate` (requires `staging`): prepare the whole export
   and discard it without publishing anything.
 - `GenerationFinishedEvent` keeps the URIs of the prepared pages even when a staged run fails,
