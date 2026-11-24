@@ -385,15 +385,20 @@ final class StagingFilesystemTest extends TestCase
         $this->assertSame('new', $this->destination->read('a.html'));
         $this->assertEquals(new GenerationFinishedEvent(['/a']), $published);
         // A run with failures cannot describe the whole site: no manifest.
-        $this->assertFalse($this->destination->fileExists(StagingFilesystem::MANIFEST_FILE));
+        $this->assertFalse($this->destination->fileExists(StagingFilesystem::DEFAULT_MANIFEST_PATH));
     }
 
     public function testPublishesAManifestDescribingTheRunAfterItsFiles(): void
     {
         iterator_to_array($this->generator(['/a', '/nested/b'])->generate());
 
-        /** @var array{generatedAt: string, files: array<string, string>} $manifest */
-        $manifest = json_decode($this->destination->read(StagingFilesystem::MANIFEST_FILE), true, 512, \JSON_THROW_ON_ERROR);
+        $raw = $this->destination->read(StagingFilesystem::DEFAULT_MANIFEST_PATH);
+        // Compact JSON: nobody reads this file, and thousands of pages make indentation costly.
+        $this->assertStringStartsWith('{"version":1,', $raw);
+        /** @var array{version: int, runId: string, generatedAt: string, files: array<string, string>} $manifest */
+        $manifest = json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $manifest['version']);
+        $this->assertNotSame('', $manifest['runId']);
         $this->assertArrayHasKey('generatedAt', $manifest);
         $this->assertSame(
             ['a.html' => hash('sha256', 'new'), 'nested/b.html' => hash('sha256', 'new')],
@@ -401,13 +406,27 @@ final class StagingFilesystemTest extends TestCase
         );
     }
 
+    public function testTheManifestCanMoveOrBeDisabled(): void
+    {
+        $staging = new StagingFilesystem($this->destination, manifestPath: 'meta/build.json');
+        iterator_to_array($this->generator(['/a'], staging: $staging)->generate());
+        $this->assertTrue($this->destination->fileExists('meta/build.json'));
+        $this->assertFalse($this->destination->fileExists(StagingFilesystem::DEFAULT_MANIFEST_PATH));
+
+        $this->destination->delete('meta/build.json');
+        $staging = new StagingFilesystem($this->destination, manifestPath: null);
+        iterator_to_array($this->generator(['/a'], staging: $staging)->generate());
+        $this->assertFalse($this->destination->fileExists(StagingFilesystem::DEFAULT_MANIFEST_PATH));
+        $this->assertFalse($this->destination->fileExists('meta/build.json'));
+    }
+
     public function testFilteredOrFailedRunsLeaveNoManifest(): void
     {
         iterator_to_array($this->generator(['/a'])->generate(new GenerationFilter(paths: ['/a'])));
-        $this->assertFalse($this->destination->fileExists(StagingFilesystem::MANIFEST_FILE));
+        $this->assertFalse($this->destination->fileExists(StagingFilesystem::DEFAULT_MANIFEST_PATH));
 
         iterator_to_array($this->generator(['/a', '/broken'])->generate());
-        $this->assertFalse($this->destination->fileExists(StagingFilesystem::MANIFEST_FILE));
+        $this->assertFalse($this->destination->fileExists(StagingFilesystem::DEFAULT_MANIFEST_PATH));
     }
 
     public function testPruneRemovesTheFilesTheRunNoLongerGenerates(): void
@@ -424,7 +443,7 @@ final class StagingFilesystemTest extends TestCase
         $this->assertSame('keep', $this->destination->read('untouched.html'));
 
         /** @var array{files: array<string, string>} $manifest */
-        $manifest = json_decode($this->destination->read(StagingFilesystem::MANIFEST_FILE), true, 512, \JSON_THROW_ON_ERROR);
+        $manifest = json_decode($this->destination->read(StagingFilesystem::DEFAULT_MANIFEST_PATH), true, 512, \JSON_THROW_ON_ERROR);
         $this->assertSame(['a.html', 'nested/b.html'], array_keys($manifest['files']));
     }
 
@@ -453,7 +472,7 @@ final class StagingFilesystemTest extends TestCase
         $this->assertSame('obsolete', $this->destination->read('old.html'));
 
         // A manifest that is not one.
-        $this->destination->write(StagingFilesystem::MANIFEST_FILE, '{invalid');
+        $this->destination->write(StagingFilesystem::DEFAULT_MANIFEST_PATH, '{invalid');
         iterator_to_array($this->generator(['/a'], staging: $staging)->generate());
         $this->assertSame('obsolete', $this->destination->read('old.html'));
     }
@@ -463,7 +482,7 @@ final class StagingFilesystemTest extends TestCase
         $destination = $this->createMock(FilesystemOperator::class);
         $destination->method('read')->willReturn(json_encode(['files' => ['old.html' => 'hash']]));
         $destination->method('delete')->willThrowException(\League\Flysystem\UnableToDeleteFile::atLocation('old.html'));
-        $destination->expects($this->once())->method('write')->with(StagingFilesystem::MANIFEST_FILE);
+        $destination->expects($this->once())->method('write')->with(StagingFilesystem::DEFAULT_MANIFEST_PATH);
         $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
         $logger->expects($this->once())->method('warning')->with('Cannot remove the obsolete file "{path}" from the storage: {message}');
         $staging = new StagingFilesystem($destination, logger: $logger, prune: true);
@@ -517,9 +536,11 @@ final class StagingFilesystemTest extends TestCase
     /**
      * @param list<string> $files
      */
-    private function writePreviousManifest(array $files): void
+    private function writePreviousManifest(array $files, string $runId = 'previous-run'): void
     {
-        $this->destination->write(StagingFilesystem::MANIFEST_FILE, json_encode([
+        $this->destination->write(StagingFilesystem::DEFAULT_MANIFEST_PATH, json_encode([
+            'version' => 1,
+            'runId' => $runId,
             'generatedAt' => '2026-11-23T00:00:00+00:00',
             'files' => array_fill_keys($files, 'previous-hash'),
         ], \JSON_THROW_ON_ERROR));

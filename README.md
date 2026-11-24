@@ -156,10 +156,14 @@ local directories and operator services such as S3, without reading, listing or 
 each destination object first. Every generated file is uploaded, even when its content has not
 changed. The configured adapter's write options and visibility still apply.
 
-A full run ends the publication with a `_static-site.json` manifest at the storage root: the
-files of the run with their SHA-256 hashes, and the generation time. It tells which files
-belong to the last published run and lets a deployment step verify the storage against it.
-It is written last, so a failed transfer leaves the previous manifest in place; filtered
+A full run ends the publication with a manifest at `_static-site/manifest.json` in the
+storage: the files of the run with their SHA-256 hashes, the generation time and the run's
+identifier. Like the `_headers` control file, it lives under the underscore prefix reserved
+for the bundle's own files, away from any route of the site. It is an internal bookkeeping
+file, not a public contract: its format may change between versions, and a `version` field
+says which one it is. The `prune` option relies on it; move it with the `manifest` option,
+or set that option to null to disable the manifest (and what relies on it) entirely. The
+manifest is written last, so a failed transfer leaves the previous one in place; filtered
 (`--route`/`--path`) and dry runs write none, since they cannot describe the whole site.
 
 The final transfer is **not atomic**, even for a local destination: Flysystem does not offer a
@@ -184,7 +188,7 @@ bakslash_static_site:
     prune: true
 ```
 
-Pruning relies on the previous run's `_static-site.json` manifest: only the files it lists
+Pruning relies on the previous run's manifest: only the files it lists
 are ever deleted, anything else on the storage is left alone. Only a complete, successful
 run prunes: filtered, dry and failed runs (including `staging_failure: publish`) never
 delete, and a storage without a readable previous manifest is pruned of nothing. A file
@@ -238,6 +242,10 @@ bakslash_static_site:
     # With "staging", delete the files the previous published run generated and the new
     # one no longer does, based on its manifest. Only a complete, successful run prunes.
     prune: false
+
+    # With "staging", path of the manifest describing the last published run, relative to
+    # the storage root. The "prune" option relies on it. Set to null to disable it.
+    manifest: '_static-site/manifest.json'
 
     # Write the headers that describe each page (Content-Security-Policy,
     # Strict-Transport-Security, ...) to this file of the output, in the "_headers"

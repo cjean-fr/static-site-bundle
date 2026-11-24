@@ -19,8 +19,11 @@
   prepare additional export files (sitemap, ...) with the pages, before publication.
 - Add the `staging_failure: publish` policy: with staging, a run with failed pages can
   still publish the pages that succeeded, instead of discarding the whole run.
-- Write a `_static-site.json` manifest (files of the run, SHA-256 hashes, generation time)
-  as the last publication step of a full staged run; filtered and dry runs write none.
+- Write a manifest (`version`, run identifier, generation time, files of the run with their
+  SHA-256 hashes) as the last publication step of a full staged run, at
+  `_static-site/manifest.json` by default, under the underscore prefix reserved for the
+  bundle's control files; the `manifest` option moves it, or disables it when null. Filtered
+  and dry runs write none. The manifest is an internal bookkeeping file, not a public contract.
 - Add the `prune` option (requires `staging`): a complete, successful run deletes the files
   the previous published run generated and the new one no longer does, based on the previous
   manifest, so the storage reflects the last run. Files the manifest does not list are left

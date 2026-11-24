@@ -23,23 +23,29 @@ use Psr\Log\LoggerInterface;
 final class StagingFilesystem extends Filesystem
 {
     /**
-     * Describes the last fully published run: which files belong to it, and their hashes.
+     * Default path of the manifest describing the last fully published run: which files
+     * belong to it, and their hashes. Kept under the underscore prefix reserved for the
+     * bundle's control files (like "_headers"), away from any route of the site.
      */
-    public const string MANIFEST_FILE = '_static-site.json';
+    public const string DEFAULT_MANIFEST_PATH = '_static-site/manifest.json';
 
     private readonly string $root;
 
     private bool $published = false;
+
+    private string $runId;
 
     public function __construct(
         private readonly FilesystemOperator $destination,
         ?string $stagingDirectory = null,
         private readonly ?LoggerInterface $logger = null,
         private readonly bool $prune = false,
+        private readonly ?string $manifestPath = self::DEFAULT_MANIFEST_PATH,
     ) {
         // The staged pages are not published yet: keep them unreadable to other local users.
         $visibility = new PortableVisibilityConverter(filePublic: 0600, directoryPublic: 0700);
         $this->root = self::createRoot($stagingDirectory ?? sys_get_temp_dir());
+        $this->runId = self::newRunId();
 
         parent::__construct(
             new LocalFilesystemAdapter($this->root, $visibility),
@@ -53,6 +59,7 @@ final class StagingFilesystem extends Filesystem
     public function start(): void
     {
         $this->published = false;
+        $this->runId = self::newRunId();
     }
 
     /**
@@ -101,11 +108,16 @@ final class StagingFilesystem extends Filesystem
                     $this->pruneObsoleteFiles($files);
                 }
 
-                ksort($files);
-                $this->destination->write(self::MANIFEST_FILE, json_encode([
-                    'generatedAt' => (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM),
-                    'files' => $files,
-                ], \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR)."\n");
+                if (null !== $this->manifestPath) {
+                    ksort($files);
+                    // Compact: nobody reads this file, and thousands of pages make indentation costly.
+                    $this->destination->write($this->manifestPath, json_encode([
+                        'version' => 1,
+                        'runId' => $this->runId,
+                        'generatedAt' => (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM),
+                        'files' => $files,
+                    ], \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR)."\n");
+                }
             }
         } catch (FilesystemException $exception) {
             throw new DumpingException('Cannot publish the generated site. The destination may have been partially updated.', previous: $exception);
@@ -124,19 +136,14 @@ final class StagingFilesystem extends Filesystem
      */
     private function pruneObsoleteFiles(array $files): void
     {
-        try {
-            $manifest = json_decode($this->destination->read(self::MANIFEST_FILE), true);
-        } catch (FilesystemException) {
+        $previous = $this->readManifest();
+        if (null === $previous) {
             // No readable manifest: the previous run cannot be described, so nothing is pruned.
             return;
         }
 
-        if (!\is_array($manifest) || !\is_array($manifest['files'] ?? null)) {
-            return;
-        }
-
-        foreach (array_keys($manifest['files']) as $path) {
-            if (!\is_string($path) || isset($files[$path]) || self::MANIFEST_FILE === $path) {
+        foreach (array_keys($previous['files']) as $path) {
+            if (isset($files[$path]) || $path === $this->manifestPath) {
                 continue;
             }
 
@@ -152,6 +159,46 @@ final class StagingFilesystem extends Filesystem
                 ]);
             }
         }
+    }
+
+    /**
+     * Reads the manifest of the previous published run, or null when there is no readable,
+     * well-formed one.
+     *
+     * @return array{runId: ?string, files: array<string, string>}|null
+     */
+    private function readManifest(): ?array
+    {
+        if (null === $this->manifestPath) {
+            return null;
+        }
+
+        try {
+            $manifest = json_decode($this->destination->read($this->manifestPath), true);
+        } catch (FilesystemException) {
+            return null;
+        }
+
+        if (!\is_array($manifest) || !\is_array($manifest['files'] ?? null)) {
+            return null;
+        }
+
+        $files = [];
+        foreach ($manifest['files'] as $path => $hash) {
+            if (\is_string($path) && \is_string($hash)) {
+                $files[$path] = $hash;
+            }
+        }
+
+        return [
+            'runId' => \is_string($manifest['runId'] ?? null) ? $manifest['runId'] : null,
+            'files' => $files,
+        ];
+    }
+
+    private static function newRunId(): string
+    {
+        return bin2hex(random_bytes(16));
     }
 
     public function discard(?\Throwable $failure = null): void
