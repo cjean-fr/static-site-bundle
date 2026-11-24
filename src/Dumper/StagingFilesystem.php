@@ -35,6 +35,9 @@ final class StagingFilesystem extends Filesystem
 
     private string $runId;
 
+    /** @var array<string, string> the SHA-256 of each staged file, computed as it is written */
+    private array $hashes = [];
+
     public function __construct(
         private readonly FilesystemOperator $destination,
         ?string $stagingDirectory = null,
@@ -60,6 +63,7 @@ final class StagingFilesystem extends Filesystem
     {
         $this->published = false;
         $this->runId = self::newRunId();
+        $this->hashes = [];
     }
 
     /**
@@ -70,6 +74,17 @@ final class StagingFilesystem extends Filesystem
         $this->guardAgainstPublishedExport();
 
         parent::write($location, $contents, $config);
+
+        // Hashed now, while the content is at hand: the publication compares it against the
+        // previous manifest without re-reading the staged file.
+        $this->hashes[$location] = hash('sha256', $contents);
+    }
+
+    public function delete(string $location): void
+    {
+        parent::delete($location);
+
+        unset($this->hashes[$location]);
     }
 
     /**
@@ -86,9 +101,17 @@ final class StagingFilesystem extends Filesystem
     public function publish(bool $partial = false): void
     {
         try {
+            $previous = $this->readManifest();
             $files = [];
             foreach ($this->listContents('', true) as $entry) {
                 if (!$entry->isFile()) {
+                    continue;
+                }
+
+                $files[$entry->path()] = $this->hashes[$entry->path()] ?? hash_file('sha256', $this->root.'/'.$entry->path());
+
+                // Unchanged since the last published run: already on the storage.
+                if (null !== $previous && ($previous['files'][$entry->path()] ?? null) === $files[$entry->path()]) {
                     continue;
                 }
 
@@ -98,14 +121,13 @@ final class StagingFilesystem extends Filesystem
                 } finally {
                     fclose($stream);
                 }
-                $files[$entry->path()] = hash_file('sha256', $this->root.'/'.$entry->path());
             }
 
             // Last, so a failed transfer leaves the previous manifest untouched; a filtered run
             // only sees part of the site and cannot describe it.
             if (!$partial) {
                 if ($this->prune) {
-                    $this->pruneObsoleteFiles($files);
+                    $this->pruneObsoleteFiles($previous, $files);
                 }
 
                 if (null !== $this->manifestPath) {
@@ -132,11 +154,11 @@ final class StagingFilesystem extends Filesystem
      * candidates: anything else on the storage is left alone, and without a readable manifest
      * nothing is pruned.
      *
-     * @param array<string, string|false> $files the files of the run being published, with their hashes
+     * @param array{runId: ?string, files: array<string, string>}|null $previous the manifest of the previous published run
+     * @param array<string, string|false>                              $files    the files of the run being published, with their hashes
      */
-    private function pruneObsoleteFiles(array $files): void
+    private function pruneObsoleteFiles(?array $previous, array $files): void
     {
-        $previous = $this->readManifest();
         if (null === $previous) {
             // No readable manifest: the previous run cannot be described, so nothing is pruned.
             return;

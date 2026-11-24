@@ -70,7 +70,7 @@ final class BakslashStaticSiteBundle extends AbstractBundle
                     ->defaultFalse()
                 ->end()
                 ->scalarNode('manifest')
-                    ->info('With "staging", path of the manifest describing the last published run, relative to the storage root. The "prune" option relies on it. Set to null to disable the manifest.')
+                    ->info('With "staging", path of the manifest describing the last published run, relative to the storage root. The "prune" option and the upload of changed files rely on it. Set to null to disable the manifest.')
                     ->defaultValue('_static-site/manifest.json')
                 ->end()
                 ->scalarNode('storage')

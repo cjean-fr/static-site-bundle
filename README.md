@@ -152,9 +152,13 @@ Pass `--dry-run` to prepare the whole export and discard it without touching `st
 useful to validate a run before publishing it.
 
 Once preparation succeeds, files are streamed to `storage` through Flysystem. This works with
-local directories and operator services such as S3, without reading, listing or checksumming
-each destination object first. Every generated file is uploaded, even when its content has not
-changed. The configured adapter's write options and visibility still apply.
+local directories and operator services such as S3. Each file is hashed (SHA-256) as it is
+written to the staging area, while its content is at hand, and only the files whose hash
+differs from the previous manifest are uploaded: the manifest is the single file the bundle
+ever reads from the destination. A run without a readable manifest uploads everything. A
+storage modified outside the bundle is not detected nor repaired: the comparison trusts the
+manifest, not the actual objects. The configured adapter's write options and visibility still
+apply.
 
 A full run ends the publication with a manifest at `_static-site/manifest.json` in the
 storage: the files of the run with their SHA-256 hashes, the generation time and the run's
@@ -244,7 +248,8 @@ bakslash_static_site:
     prune: false
 
     # With "staging", path of the manifest describing the last published run, relative to
-    # the storage root. The "prune" option relies on it. Set to null to disable it.
+    # the storage root. The "prune" option and the upload of changed files rely on it.
+    # Set to null to disable it.
     manifest: '_static-site/manifest.json'
 
     # Write the headers that describe each page (Content-Security-Policy,

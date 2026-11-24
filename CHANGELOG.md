@@ -24,6 +24,10 @@
   `_static-site/manifest.json` by default, under the underscore prefix reserved for the
   bundle's control files; the `manifest` option moves it, or disables it when null. Filtered
   and dry runs write none. The manifest is an internal bookkeeping file, not a public contract.
+- Upload only the files that changed since the last published run: each staged file is hashed
+  (SHA-256) as it is written, and the publication compares against the previous manifest, the
+  single file read from the destination. A run without a readable manifest uploads everything,
+  and a storage modified outside the bundle is not detected nor repaired.
 - Add the `prune` option (requires `staging`): a complete, successful run deletes the files
   the previous published run generated and the new one no longer does, based on the previous
   manifest, so the storage reflects the last run. Files the manifest does not list are left

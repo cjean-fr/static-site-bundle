@@ -193,10 +193,11 @@ final class StagingFilesystemTest extends TestCase
         $this->assertSame('new', $this->destination->read('a.html'));
     }
 
-    public function testPublishesStreamsWithoutReadingOrListingTheDestination(): void
+    public function testPublishesStreamsReadingOnlyTheManifest(): void
     {
         $destination = $this->createMock(FilesystemOperator::class);
-        $destination->expects($this->never())->method('read');
+        // The manifest is the only file ever read from the destination.
+        $destination->expects($this->once())->method('read')->with(StagingFilesystem::DEFAULT_MANIFEST_PATH)->willReturn('{invalid');
         $destination->expects($this->never())->method('readStream');
         $destination->expects($this->never())->method('fileExists');
         $destination->expects($this->never())->method('listContents');
@@ -210,6 +211,31 @@ final class StagingFilesystemTest extends TestCase
         try {
             $staging->write('page.html', 'content');
             $staging->publish();
+        } finally {
+            $staging->discard();
+        }
+    }
+
+    public function testOnlyChangedFilesAreUploadedAgain(): void
+    {
+        iterator_to_array($this->generator(['/a', '/nested/b'])->generate());
+        $manifest = $this->destination->read(StagingFilesystem::DEFAULT_MANIFEST_PATH);
+
+        $destination = $this->createMock(FilesystemOperator::class);
+        $destination->expects($this->once())->method('read')->with(StagingFilesystem::DEFAULT_MANIFEST_PATH)->willReturn($manifest);
+        // a.html is unchanged: only nested/b.html, whose content changed, is uploaded again.
+        $destination->expects($this->once())->method('writeStream')->with('nested/b.html');
+        $destination->expects($this->once())->method('write')->with(StagingFilesystem::DEFAULT_MANIFEST_PATH);
+        $staging = new StagingFilesystem($destination);
+
+        $provider = $this->createStub(UriProviderInterface::class);
+        $provider->method('provide')->willReturn(['/a', '/nested/b']);
+        $renderer = $this->createStub(RendererInterface::class);
+        $renderer->method('render')->willReturnCallback(static fn (string $uri): RenderedPage => new RenderedPage('/a' === $uri ? 'new' : 'changed', 'html'));
+        $generator = new StaticSiteGenerator($provider, $renderer, new FlysystemDumper($staging), $this->dispatcher, $this->createStub(ResetInterface::class), $staging);
+
+        try {
+            iterator_to_array($generator->generate());
         } finally {
             $staging->discard();
         }
