@@ -50,6 +50,16 @@
   of the internal `GenerationStartedEvent`/`GenerationPreparedEvent` pair (both removed): the
   lifecycle of the bundle's own output files no longer transits through the public dispatcher.
 
+- Accept `manifest: null` to disable the manifest with "staging" on. The option was declared
+  as a scalar node, which rejects an explicit null; it is now a variable node whose path is
+  validated explicitly.
+- Fail a run whose `GenerationFinishedEvent` listener throws *after* a staged publication with
+  a new `PostPublicationException`: its message states that the pages reached the storage, so
+  a deployment is not rolled back on the belief that nothing was published. Before publication,
+  the listener exception is still propagated unchanged.
+- Type `StaticSiteGenerator::generate()` as `\Generator`, and refuse deleting from a staged
+  export once it has been published, like writing to it.
+
 ## 0.2.0
 
 - Dispatch `GenerationFinishedEvent` once a run completes, carrying the URIs of the written

@@ -82,6 +82,8 @@ final class StagingFilesystem extends Filesystem
 
     public function delete(string $location): void
     {
+        $this->guardAgainstPublishedExport();
+
         parent::delete($location);
 
         unset($this->hashes[$location]);

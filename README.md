@@ -446,7 +446,9 @@ Files written by application listeners, or by a custom dumper that bypasses the 
 staging filesystem, are outside the protected preparation step. A listener can therefore still
 change storage or fail after publication. Writing to the bundle's staging area after the
 publication (from a `GenerationFinishedEvent` listener, for instance) is a clear error: the
-staged files are deleted as the run unwinds, so such a file would never reach the storage.
+staged files are deleted as the run unwinds, so such a file would never reach the storage. The
+command then fails with a `PostPublicationException` whose message says the pages were published
+anyway, so a deployment is never rolled back on the belief that nothing reached the storage.
 
 ```php
 use Bakslash\StaticSiteBundle\Event\PageRenderedEvent;

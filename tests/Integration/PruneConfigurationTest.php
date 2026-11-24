@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bakslash\StaticSiteBundle\Tests\Integration;
 
+use Bakslash\StaticSiteBundle\Tests\Fixtures\ManifestDisabledKernel;
 use Bakslash\StaticSiteBundle\Tests\Fixtures\PruneWithoutManifestKernel;
 use Bakslash\StaticSiteBundle\Tests\Fixtures\PruneWithoutStagingKernel;
 use PHPUnit\Framework\TestCase;
@@ -19,6 +20,13 @@ final class PruneConfigurationTest extends TestCase
         $this->expectExceptionMessageMatches('/"prune" option requires "staging"/');
 
         $kernel->boot();
+    }
+
+    public function testAcceptsAManifestWithoutPruning(): void
+    {
+        (new ManifestDisabledKernel('test', true))->boot();
+
+        $this->addToAssertionCount(1);
     }
 
     public function testRejectsPruneWithoutManifest(): void

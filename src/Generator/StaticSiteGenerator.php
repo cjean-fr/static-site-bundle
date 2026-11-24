@@ -13,6 +13,7 @@ use Bakslash\StaticSiteBundle\Event\PageDumpedEvent;
 use Bakslash\StaticSiteBundle\Event\PageFailedEvent;
 use Bakslash\StaticSiteBundle\Event\PageRenderedEvent;
 use Bakslash\StaticSiteBundle\Exception\DumpingException;
+use Bakslash\StaticSiteBundle\Exception\PostPublicationException;
 use Bakslash\StaticSiteBundle\Exception\RenderingException;
 use Bakslash\StaticSiteBundle\Renderer\RendererInterface;
 use Bakslash\StaticSiteBundle\UriProvider\GenerationFilter;
@@ -46,7 +47,7 @@ final readonly class StaticSiteGenerator
      *                                                                     once fully iterated, the files the run removed from the storage, or those a dry run
      *                                                                     would have removed (null when pruning is disabled)
      */
-    public function generate(GenerationFilter $filter = new GenerationFilter(), bool $dryRun = false): iterable
+    public function generate(GenerationFilter $filter = new GenerationFilter(), bool $dryRun = false): \Generator
     {
         $failure = null;
         $prunedFiles = null;
@@ -115,7 +116,20 @@ final readonly class StaticSiteGenerator
                 $prunedFiles = $this->staging->wouldPrune();
             }
 
-            $this->eventDispatcher->dispatch(new GenerationFinishedEvent($dumped, !$filter->isEmpty(), null === $this->staging || ($publishable && !$dryRun) ? GenerationStatus::Published : GenerationStatus::Discarded));
+            $publishedFromStaging = null !== $this->staging && $publishable && !$dryRun;
+            $published = null === $this->staging || $publishedFromStaging;
+
+            try {
+                $this->eventDispatcher->dispatch(new GenerationFinishedEvent($dumped, !$filter->isEmpty(), $published ? GenerationStatus::Published : GenerationStatus::Discarded));
+            } catch (\Throwable $exception) {
+                // The staged export is already on the storage: say so, instead of letting the
+                // caller believe a failed run deployed nothing.
+                if (!$publishedFromStaging) {
+                    throw $exception;
+                }
+
+                throw new PostPublicationException(\sprintf('The pages were published to the storage, but the run then failed: %s', $exception->getMessage()), previous: $exception);
+            }
         } catch (\Throwable $exception) {
             $failure = $exception;
 

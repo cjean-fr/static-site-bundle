@@ -11,6 +11,7 @@ use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
 use Bakslash\StaticSiteBundle\Event\GenerationStatus;
 use Bakslash\StaticSiteBundle\Exception\DumpingException;
 use Bakslash\StaticSiteBundle\Exception\LogicException;
+use Bakslash\StaticSiteBundle\Exception\PostPublicationException;
 use Bakslash\StaticSiteBundle\Exception\RenderingException;
 use Bakslash\StaticSiteBundle\Generator\StaticSiteGenerator;
 use Bakslash\StaticSiteBundle\Renderer\RenderedPage;
@@ -616,10 +617,16 @@ final class StagingFilesystemTest extends TestCase
         try {
             iterator_to_array($this->generator(['/a'])->generate());
             $this->fail('The listener write should fail.');
-        } catch (LogicException $exception) {
-            $this->assertStringContainsString('already published', $exception->getMessage());
+        } catch (PostPublicationException $exception) {
+            $this->assertStringContainsString('published to the storage', $exception->getMessage());
+
+            $previous = $exception->getPrevious();
+            $this->assertInstanceOf(LogicException::class, $previous);
+            $this->assertStringContainsString('already published', $previous->getMessage());
         }
 
+        // The pages are on the storage: the failure must not make the caller believe otherwise.
+        $this->assertSame('new', $this->destination->read('a.html'));
         $this->assertFalse($this->destination->fileExists('late.html'));
     }
 
