@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bakslash\StaticSiteBundle\Dumper;
 
 use Bakslash\StaticSiteBundle\Exception\DumpingException;
+use Bakslash\StaticSiteBundle\Exception\LogicException;
 use League\Flysystem\Config;
 use League\Flysystem\Filesystem;
 use League\Flysystem\FilesystemException;
@@ -28,6 +29,8 @@ final class StagingFilesystem extends Filesystem
 
     private readonly string $root;
 
+    private bool $published = false;
+
     public function __construct(
         private readonly FilesystemOperator $destination,
         ?string $stagingDirectory = null,
@@ -42,6 +45,35 @@ final class StagingFilesystem extends Filesystem
             new LocalFilesystemAdapter($this->root, $visibility),
             [Config::OPTION_VISIBILITY => Visibility::PRIVATE],
         );
+    }
+
+    /**
+     * Marks the beginning of a run: writing is allowed again, until its publication.
+     */
+    public function start(): void
+    {
+        $this->published = false;
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    public function write(string $location, string $contents, array $config = []): void
+    {
+        $this->guardAgainstPublishedExport();
+
+        parent::write($location, $contents, $config);
+    }
+
+    /**
+     * @param resource             $contents
+     * @param array<string, mixed> $config
+     */
+    public function writeStream(string $location, $contents, array $config = []): void
+    {
+        $this->guardAgainstPublishedExport();
+
+        parent::writeStream($location, $contents, $config);
     }
 
     public function publish(bool $partial = false): void
@@ -78,6 +110,8 @@ final class StagingFilesystem extends Filesystem
         } catch (FilesystemException $exception) {
             throw new DumpingException('Cannot publish the generated site. The destination may have been partially updated.', previous: $exception);
         }
+
+        $this->published = true;
     }
 
     /**
@@ -137,6 +171,15 @@ final class StagingFilesystem extends Filesystem
             }
 
             throw new DumpingException($failure->getMessage().' Temporary export cleanup also failed: '.$exception->getMessage(), previous: $failure);
+        }
+    }
+
+    private function guardAgainstPublishedExport(): void
+    {
+        if ($this->published) {
+            // The staged files are deleted once the run unwinds: a file written now would
+            // silently never reach the storage.
+            throw new LogicException('The export of this run was already published; a file written to the staging area now would be deleted without ever reaching the storage. Write it to the "bakslash_static_site.filesystem" destination directly instead.');
         }
     }
 

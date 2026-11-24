@@ -427,7 +427,9 @@ pages with a `Discarded` status, because none of them reached the storage. Check
 `$event->isPublished()` before acting on the URIs: the event alone is not proof of success.
 Files written by application listeners, or by a custom dumper that bypasses the bundle's
 staging filesystem, are outside the protected preparation step. A listener can therefore still
-change storage or fail after publication.
+change storage or fail after publication. Writing to the bundle's staging area after the
+publication (from a `GenerationFinishedEvent` listener, for instance) is a clear error: the
+staged files are deleted as the run unwinds, so such a file would never reach the storage.
 
 ```php
 use Bakslash\StaticSiteBundle\Event\PageRenderedEvent;

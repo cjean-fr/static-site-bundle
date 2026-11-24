@@ -49,6 +49,7 @@ final readonly class StaticSiteGenerator
         $failure = null;
 
         try {
+            $this->staging?->start();
             foreach ($this->preparers as $preparer) {
                 $preparer->start();
             }

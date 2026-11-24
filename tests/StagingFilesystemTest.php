@@ -10,6 +10,7 @@ use Bakslash\StaticSiteBundle\Dumper\StagingFilesystem;
 use Bakslash\StaticSiteBundle\Event\GenerationFinishedEvent;
 use Bakslash\StaticSiteBundle\Event\GenerationStatus;
 use Bakslash\StaticSiteBundle\Exception\DumpingException;
+use Bakslash\StaticSiteBundle\Exception\LogicException;
 use Bakslash\StaticSiteBundle\Exception\RenderingException;
 use Bakslash\StaticSiteBundle\Generator\StaticSiteGenerator;
 use Bakslash\StaticSiteBundle\Renderer\RenderedPage;
@@ -473,6 +474,44 @@ final class StagingFilesystemTest extends TestCase
         } finally {
             $staging->discard();
         }
+    }
+
+    public function testWritingToAnAlreadyPublishedExportIsAClearError(): void
+    {
+        $staging = new StagingFilesystem($this->destination);
+        $staging->write('a.html', 'new');
+        $staging->publish();
+
+        try {
+            $staging->write('late.html', 'too late');
+            $this->fail('Writing after the publication should fail.');
+        } catch (LogicException $exception) {
+            $this->assertStringContainsString('already published', $exception->getMessage());
+        } finally {
+            $staging->discard();
+        }
+
+        // The next run stages again.
+        $staging->start();
+        $staging->write('next.html', 'next run');
+        $staging->discard();
+    }
+
+    public function testAListenerWritingThroughTheBundleDumperAfterPublicationGetsAClearError(): void
+    {
+        $dumper = new FlysystemDumper($this->staging);
+        $this->dispatcher->addListener(GenerationFinishedEvent::class, static function () use ($dumper): void {
+            $dumper->dump('/late', new RenderedPage('too late', 'html'));
+        });
+
+        try {
+            iterator_to_array($this->generator(['/a'])->generate());
+            $this->fail('The listener write should fail.');
+        } catch (LogicException $exception) {
+            $this->assertStringContainsString('already published', $exception->getMessage());
+        }
+
+        $this->assertFalse($this->destination->fileExists('late.html'));
     }
 
     /**

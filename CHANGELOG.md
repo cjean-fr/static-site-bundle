@@ -25,6 +25,10 @@
   the previous published run generated and the new one no longer does, based on the previous
   manifest, so the storage reflects the last run. Files the manifest does not list are left
   untouched, and a deletion failure is logged without failing the publication.
+- Writing to the staging area after the run's publication (e.g. from a
+  `GenerationFinishedEvent` listener using the bundle's dumper) now fails with a clear
+  `LogicException`: the staged files are deleted as the run unwinds, so such a write would
+  silently never reach the storage.
 - Add `--dry-run` to `static-site:generate` (requires `staging`): prepare the whole export
   and discard it without publishing anything.
 - `GenerationFinishedEvent` keeps the URIs of the prepared pages even when a staged run fails,
