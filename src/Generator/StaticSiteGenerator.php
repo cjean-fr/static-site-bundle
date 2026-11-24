@@ -42,11 +42,14 @@ final readonly class StaticSiteGenerator
     }
 
     /**
-     * @return iterable<GenerationResult>
+     * @return \Generator<int, GenerationResult, mixed, list<string>|null> the per-page results, then,
+     *                                                                     once fully iterated, the files the run removed from the storage, or those a dry run
+     *                                                                     would have removed (null when pruning is disabled)
      */
     public function generate(GenerationFilter $filter = new GenerationFilter(), bool $dryRun = false): iterable
     {
         $failure = null;
+        $prunedFiles = null;
 
         try {
             $this->staging?->start();
@@ -107,7 +110,9 @@ final readonly class StaticSiteGenerator
 
             if ($publishable && !$dryRun) {
                 // A run that failed or was filtered cannot describe the whole site: no manifest.
-                $this->staging?->publish(partial: !$filter->isEmpty() || !$successful);
+                $prunedFiles = $this->staging?->publish(partial: !$filter->isEmpty() || !$successful) ?? [];
+            } elseif ($dryRun && null !== $this->staging) {
+                $prunedFiles = $this->staging->wouldPrune();
             }
 
             $this->eventDispatcher->dispatch(new GenerationFinishedEvent($dumped, !$filter->isEmpty(), null === $this->staging || ($publishable && !$dryRun) ? GenerationStatus::Published : GenerationStatus::Discarded));
@@ -118,5 +123,7 @@ final readonly class StaticSiteGenerator
         } finally {
             $this->staging?->discard($failure);
         }
+
+        return $prunedFiles;
     }
 }

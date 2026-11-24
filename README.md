@@ -149,7 +149,8 @@ bakslash_static_site:
 ```
 
 Pass `--dry-run` to prepare the whole export and discard it without touching `storage`,
-useful to validate a run before publishing it.
+useful to validate a run before publishing it. With `prune`, the dry run also reports how
+many files the run would remove, so the first activation never deletes sight unseen.
 
 Once preparation succeeds, files are streamed to `storage` through Flysystem. This works with
 local directories and operator services such as S3. Each file is hashed (SHA-256) as it is
@@ -198,7 +199,8 @@ Pruning relies on the previous run's manifest: only the files it lists
 are ever deleted, anything else on the storage is left alone. Only a complete, successful
 run prunes: filtered, dry and failed runs (including `staging_failure: publish`) never
 delete, and a storage without a readable previous manifest is pruned of nothing. A file
-that cannot be deleted is reported in the logs without failing the publication. Without
+that cannot be deleted is reported in the logs without failing the publication; the removed
+files are logged too. Without
 staging, or for a deployment you fully control, keep publishing the output in a separate
 step and let that step prune:
 

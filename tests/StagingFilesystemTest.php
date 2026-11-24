@@ -524,6 +524,49 @@ final class StagingFilesystemTest extends TestCase
         }
     }
 
+    public function testPruneReturnsAndLogsTheRemovedFiles(): void
+    {
+        $this->destination->write('old.html', 'obsolete');
+        $this->destination->write('other.html', 'obsolete too');
+        $this->writePreviousManifest(['a.html', 'old.html', 'other.html']);
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())->method('info')->with('Removed {count} obsolete file(s) from the storage: {paths}');
+        $staging = new StagingFilesystem($this->destination, logger: $logger, prune: true);
+
+        try {
+            $staging->write('a.html', 'new');
+            $this->assertSame(['old.html', 'other.html'], $staging->publish());
+        } finally {
+            $staging->discard();
+        }
+    }
+
+    public function testADryRunReportsTheFilesItWouldPrune(): void
+    {
+        $staging = new StagingFilesystem($this->destination, prune: true);
+        $this->destination->write('old.html', 'obsolete');
+        $this->writePreviousManifest(['a.html', 'old.html']);
+
+        $run = $this->generator(['/a'], staging: $staging)->generate(dryRun: true);
+        iterator_to_array($run);
+
+        $this->assertSame(['old.html'], $run->getReturn());
+        // Nothing was published nor removed.
+        $this->assertSame('previous', $this->destination->read('a.html'));
+        $this->assertSame('obsolete', $this->destination->read('old.html'));
+    }
+
+    public function testWouldPruneIsNullWhenPruningIsDisabled(): void
+    {
+        $staging = new StagingFilesystem($this->destination);
+
+        try {
+            $this->assertNull($staging->wouldPrune());
+        } finally {
+            $staging->discard();
+        }
+    }
+
     public function testAPruningFailureIsLoggedWithoutFailingThePublication(): void
     {
         $destination = $this->createMock(FilesystemOperator::class);

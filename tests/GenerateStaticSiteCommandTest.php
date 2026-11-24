@@ -218,6 +218,36 @@ final class GenerateStaticSiteCommandTest extends TestCase
         }
     }
 
+    public function testDryRunReportsTheFilesThatWouldBePruned(): void
+    {
+        $renderer = $this->createStub(RendererInterface::class);
+        $renderer->method('render')->willReturn(new RenderedPage('content', 'html'));
+
+        $destination = new Filesystem(new LocalFilesystemAdapter(sys_get_temp_dir().'/bakslash-command-test-'.bin2hex(random_bytes(8))));
+        $destination->write('old.html', 'obsolete');
+        $destination->write(StagingFilesystem::DEFAULT_MANIFEST_PATH, json_encode([
+            'version' => 1,
+            'runId' => 'previous-run',
+            'generatedAt' => '2026-11-23T00:00:00+00:00',
+            'files' => ['a.html' => 'previous-hash', 'old.html' => 'previous-hash'],
+        ], \JSON_THROW_ON_ERROR));
+        $staging = new StagingFilesystem($destination, prune: true);
+
+        try {
+            $generator = new StaticSiteGenerator($this->uriProvider(['/a']), $renderer, new FlysystemDumper($staging), new EventDispatcher(), $this->createStub(ResetInterface::class), $staging);
+
+            $output = new BufferedOutput();
+            $exit = (new GenerateStaticSiteCommand($generator, debug: false, staging: $staging))->__invoke(new SymfonyStyle(new ArrayInput([]), $output), dryRun: true);
+
+            $this->assertSame(0, $exit);
+            $this->assertStringContainsString('Prepared 1 page(s); dry run, nothing was published. 1 file(s) would be pruned.', (string) preg_replace('/\s+/', ' ', $output->fetch()));
+            $this->assertSame('obsolete', $destination->read('old.html'));
+        } finally {
+            $staging->discard();
+            $destination->deleteDirectory('');
+        }
+    }
+
     public function testDryRunRequiresStaging(): void
     {
         $dumper = $this->createMock(DumperInterface::class);

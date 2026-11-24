@@ -98,8 +98,13 @@ final class StagingFilesystem extends Filesystem
         parent::writeStream($location, $contents, $config);
     }
 
-    public function publish(bool $partial = false): void
+    /**
+     * @return list<string> the paths the pruning removed from the storage
+     */
+    public function publish(bool $partial = false): array
     {
+        $pruned = [];
+
         try {
             $previous = $this->readManifest();
             $files = [];
@@ -129,7 +134,7 @@ final class StagingFilesystem extends Filesystem
                 if ($this->prune && null !== $previous) {
                     $current = $this->readManifest();
                     if (null !== $current && $current['runId'] === $previous['runId']) {
-                        $this->pruneObsoleteFiles($previous, $files);
+                        $pruned = $this->pruneObsoleteFiles($previous, $files);
                     } else {
                         // The manifest moved during this publication: another run published
                         // meanwhile. Refuse to prune rather than delete that run's files.
@@ -153,6 +158,43 @@ final class StagingFilesystem extends Filesystem
         }
 
         $this->published = true;
+
+        return $pruned;
+    }
+
+    /**
+     * The files a full publication of the staged export would remove, or null when pruning
+     * is disabled: the pruning preview of a dry run.
+     *
+     * @return ?list<string>
+     */
+    public function wouldPrune(): ?array
+    {
+        if (!$this->prune || null === $this->manifestPath) {
+            return null;
+        }
+
+        $previous = $this->readManifest();
+        if (null === $previous) {
+            return [];
+        }
+
+        $current = [];
+        foreach ($this->listContents('', true) as $entry) {
+            if ($entry->isFile()) {
+                $current[$entry->path()] = true;
+            }
+        }
+
+        $prunable = [];
+        foreach (array_keys($previous['files']) as $path) {
+            if (!isset($current[$path]) && $path !== $this->manifestPath) {
+                $prunable[] = $path;
+            }
+        }
+        sort($prunable);
+
+        return $prunable;
     }
 
     /**
@@ -163,14 +205,17 @@ final class StagingFilesystem extends Filesystem
      *
      * @param array{runId: ?string, files: array<string, string>}|null $previous the manifest of the previous published run
      * @param array<string, string|false>                              $files    the files of the run being published, with their hashes
+     *
+     * @return list<string> the removed paths
      */
-    private function pruneObsoleteFiles(?array $previous, array $files): void
+    private function pruneObsoleteFiles(?array $previous, array $files): array
     {
         if (null === $previous) {
             // No readable manifest: the previous run cannot be described, so nothing is pruned.
-            return;
+            return [];
         }
 
+        $pruned = [];
         foreach (array_keys($previous['files']) as $path) {
             if (isset($files[$path]) || $path === $this->manifestPath) {
                 continue;
@@ -178,6 +223,7 @@ final class StagingFilesystem extends Filesystem
 
             try {
                 $this->destination->delete($path);
+                $pruned[] = $path;
             } catch (FilesystemException $exception) {
                 // The publication itself succeeded: only an obsolete file is left behind,
                 // report it instead of failing the command.
@@ -188,6 +234,15 @@ final class StagingFilesystem extends Filesystem
                 ]);
             }
         }
+
+        if ([] !== $pruned) {
+            $this->logger?->info('Removed {count} obsolete file(s) from the storage: {paths}', [
+                'count' => \count($pruned),
+                'paths' => implode(', ', $pruned),
+            ]);
+        }
+
+        return $pruned;
     }
 
     /**

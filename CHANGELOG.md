@@ -31,6 +31,8 @@
 - Refuse to prune when another run published to the storage during the publication: the
   manifest is re-read before pruning and its run identifier compared, so the race becomes a
   skipped cleanup (logged) instead of the silent deletion of the other run's files.
+- Preview the pruning: a dry run with `prune` reports how many files it would remove from the
+  storage, and a real run logs the removed paths and counts them in the command output.
 - Add the `prune` option (requires `staging`): a complete, successful run deletes the files
   the previous published run generated and the new one no longer does, based on the previous
   manifest, so the storage reflects the last run. Files the manifest does not list are left

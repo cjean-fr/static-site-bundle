@@ -64,8 +64,10 @@ final readonly class GenerateStaticSiteCommand
         $progress?->setFormat(' Resolving the pages to generate...');
         $progress?->start();
 
+        $run = $this->generator->generate(new GenerationFilter($route, $path), $dryRun);
+
         try {
-            foreach ($this->generator->generate(new GenerationFilter($route, $path), $dryRun) as $result) {
+            foreach ($run as $result) {
                 if (0 === $generated + $failed) {
                     $progress?->setFormat(self::PROGRESS_FORMAT);
                 }
@@ -82,6 +84,7 @@ final readonly class GenerateStaticSiteCommand
 
                 $progress?->advance();
             }
+            $prunedFiles = $run->getReturn();
         } finally {
             if (null !== $progress) {
                 $progress->setFormat(self::PROGRESS_FORMAT);
@@ -106,14 +109,26 @@ final readonly class GenerateStaticSiteCommand
         }
 
         if ($dryRun) {
-            $io->success(\sprintf('Prepared %d page(s); dry run, nothing was published.', $generated));
+            $message = \sprintf('Prepared %d page(s); dry run, nothing was published.', $generated);
+            if (null !== $prunedFiles) {
+                $message .= \sprintf(' %d file(s) would be pruned.', \count($prunedFiles));
+            }
+            $io->success($message);
 
             return Command::SUCCESS;
         }
 
-        $io->success(null !== $this->staging
-            ? \sprintf('Prepared %d page(s), then published them to the storage.', $generated)
-            : \sprintf('Generated %d page(s).', $generated));
+        if (null !== $this->staging) {
+            $message = \sprintf('Prepared %d page(s), then published them to the storage.', $generated);
+            if (!empty($prunedFiles)) {
+                $message .= \sprintf(' Removed %d obsolete file(s).', \count($prunedFiles));
+            }
+            $io->success($message);
+
+            return Command::SUCCESS;
+        }
+
+        $io->success(\sprintf('Generated %d page(s).', $generated));
 
         return Command::SUCCESS;
     }
