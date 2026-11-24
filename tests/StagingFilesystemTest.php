@@ -503,6 +503,27 @@ final class StagingFilesystemTest extends TestCase
         $this->assertSame('obsolete', $this->destination->read('old.html'));
     }
 
+    public function testPruningIsRefusedWhenAnotherRunPublishedMeanwhile(): void
+    {
+        $previous = json_encode(['version' => 1, 'runId' => 'run-a', 'generatedAt' => '2026-11-23T00:00:00+00:00', 'files' => ['old.html' => 'hash']]);
+        $concurrent = json_encode(['version' => 1, 'runId' => 'run-b', 'generatedAt' => '2026-11-24T00:00:00+00:00', 'files' => ['other.html' => 'hash']]);
+        $destination = $this->createMock(FilesystemOperator::class);
+        // The manifest read at the start of the publication, then re-read before pruning.
+        $destination->expects($this->exactly(2))->method('read')->willReturnOnConsecutiveCalls($previous, $concurrent);
+        $destination->expects($this->never())->method('delete');
+        $destination->expects($this->once())->method('write')->with(StagingFilesystem::DEFAULT_MANIFEST_PATH);
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())->method('warning')->with('Another run published to the storage during this one: skipping the pruning of obsolete files.');
+        $staging = new StagingFilesystem($destination, logger: $logger, prune: true);
+
+        try {
+            $staging->write('a.html', 'new');
+            $staging->publish();
+        } finally {
+            $staging->discard();
+        }
+    }
+
     public function testAPruningFailureIsLoggedWithoutFailingThePublication(): void
     {
         $destination = $this->createMock(FilesystemOperator::class);

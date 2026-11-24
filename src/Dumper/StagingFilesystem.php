@@ -126,8 +126,15 @@ final class StagingFilesystem extends Filesystem
             // Last, so a failed transfer leaves the previous manifest untouched; a filtered run
             // only sees part of the site and cannot describe it.
             if (!$partial) {
-                if ($this->prune) {
-                    $this->pruneObsoleteFiles($previous, $files);
+                if ($this->prune && null !== $previous) {
+                    $current = $this->readManifest();
+                    if (null !== $current && $current['runId'] === $previous['runId']) {
+                        $this->pruneObsoleteFiles($previous, $files);
+                    } else {
+                        // The manifest moved during this publication: another run published
+                        // meanwhile. Refuse to prune rather than delete that run's files.
+                        $this->logger?->warning('Another run published to the storage during this one: skipping the pruning of obsolete files.');
+                    }
                 }
 
                 if (null !== $this->manifestPath) {

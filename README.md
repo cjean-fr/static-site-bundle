@@ -173,8 +173,10 @@ manifest is written last, so a failed transfer leaves the previous one in place;
 The final transfer is **not atomic**, even for a local destination: Flysystem does not offer a
 portable directory swap or multi-file transaction. A transfer failure can leave a mix of old
 and new files; the command fails and reports that publication may be partial. Concurrent runs
-targeting the same storage are not coordinated. Do not use the storage as a live deployment
-while publishing if readers need a consistent snapshot.
+targeting the same storage are not coordinated; with `prune`, a run that notices another run
+published while it was transferring refuses to prune (and logs it), so the race becomes a
+skipped cleanup instead of the silent deletion of the other run's files. Do not use the
+storage as a live deployment while publishing if readers need a consistent snapshot.
 
 By default the command **only writes generated files, and never deletes anything.** Filtered
 runs leave files outside the selection untouched, including an existing headers file. A

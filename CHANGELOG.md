@@ -28,6 +28,9 @@
   (SHA-256) as it is written, and the publication compares against the previous manifest, the
   single file read from the destination. A run without a readable manifest uploads everything,
   and a storage modified outside the bundle is not detected nor repaired.
+- Refuse to prune when another run published to the storage during the publication: the
+  manifest is re-read before pruning and its run identifier compared, so the race becomes a
+  skipped cleanup (logged) instead of the silent deletion of the other run's files.
 - Add the `prune` option (requires `staging`): a complete, successful run deletes the files
   the previous published run generated and the new one no longer does, based on the previous
   manifest, so the storage reflects the last run. Files the manifest does not list are left
